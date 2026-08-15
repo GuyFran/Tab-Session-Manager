@@ -7,6 +7,7 @@ import DonationMessage from "./DonationMessage";
 import { sendUndoMessage, sendRedoMessage } from "../actions/controlSessions";
 import UndoIcon from "../icons/undo.svg";
 import RedoIcon from "../icons/redo.svg";
+import UpdateIcon from "../icons/update.svg";
 import HeartIcon from "../icons/heart.svg";
 import CloudSyncIcon from "../icons/cloudSync.svg";
 import ExpandIcon from "../icons/expand.svg";
@@ -50,7 +51,7 @@ const openSessionListInTab = () => {
 };
 
 export default props => {
-  const { openModal, syncStatus, needsSync, undoStatus } = props;
+  const { openModal, syncStatus, needsSync, undoStatus, sweepStatus } = props;
 
   const handleHeartClick = () => {
     openModal(browser.i18n.getMessage("donationLabel"), <DonationMessage />);
@@ -59,6 +60,12 @@ export default props => {
   const handleSyncClick = async () => {
     await browser.runtime.sendMessage({
       message: "syncCloud"
+    });
+  };
+
+  const handleSweepClick = () => {
+    browser.runtime.sendMessage({
+      message: sweepStatus.isSweeping ? "stopPreloadSweep" : "startPreloadSweep"
     });
   };
 
@@ -87,6 +94,18 @@ export default props => {
           <div className="count">{undoStatus.redoCount > 0 && undoStatus.redoCount}</div>
         </button>
         <div className="separation" />
+        <button
+          className={`sweepButton ${sweepStatus.isSweeping ? "sweeping" : ""}`}
+          onClick={handleSweepClick}
+          title={browser.i18n.getMessage(
+            sweepStatus.isSweeping ? "stopPreloadSweepLabel" : "startPreloadSweepLabel"
+          )}
+        >
+          <UpdateIcon />
+          <div className="count">
+            {sweepStatus.isSweeping && sweepStatus.remainingCount > 0 && sweepStatus.remainingCount}
+          </div>
+        </button>
         {shouldShowCloudSync && (
           <button
             className={"cloudSyncButton"}

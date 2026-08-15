@@ -65,6 +65,10 @@ export default class PopupPage extends Component {
         undoCount: 0,
         redoCount: 0
       },
+      sweepStatus: {
+        isSweeping: false,
+        remainingCount: 0
+      },
       tagList: [],
       trackingSessions: [],
       menu: {
@@ -149,6 +153,12 @@ export default class PopupPage extends Component {
     window.addEventListener("unload", this.handleUnload, { once: true });
     browser.runtime.sendMessage({ message: "updateUndoStatus" });
     browser.runtime.sendMessage({ message: "updateTrackingStatus" });
+    browser.runtime
+      .sendMessage({ message: "getPreloadSweepStatus" })
+      .then(sweepStatus => {
+        if (sweepStatus) this.setState({ sweepStatus: sweepStatus });
+      })
+      .catch(() => {});
 
     if (getSettings("isShowUpdated")) {
       this.openNotification({
@@ -215,6 +225,8 @@ export default class PopupPage extends Component {
         return this.handleUpdateUndoStatus(request);
       case "updateTrackingStatus":
         return this.handleUpdateTrackingStatus(request);
+      case "updatePreloadSweepStatus":
+        return this.handleUpdateSweepStatus(request);
     }
   };
 
@@ -319,6 +331,11 @@ export default class PopupPage extends Component {
 
   handleUpdateTrackingStatus = request => {
     this.setState({ trackingSessions: request.trackingSessions || [] });
+  };
+
+  handleUpdateSweepStatus = request => {
+    if (!request.sweepStatus) return;
+    this.setState({ sweepStatus: request.sweepStatus });
   };
 
   handleUnload = () => {
@@ -549,6 +566,7 @@ export default class PopupPage extends Component {
           syncStatus={this.state.syncStatus}
           needsSync={this.state.needsSync}
           undoStatus={this.state.undoStatus}
+          sweepStatus={this.state.sweepStatus}
         />
         <div id="contents">
           <div className="column sidebar" style={{ width: `${this.state.sidebarWidth}px` }}>

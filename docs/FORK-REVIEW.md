@@ -1,0 +1,279 @@
+# Fork Review — Tab Session Manager
+
+**Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
+**Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
+**Review date:** 2026-08-07
+**Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
+
+---
+
+## 1. What this project is
+
+A cross-browser WebExtension (Chrome MV3 + Firefox MV3) that saves and restores browser
+window/tab state, with auto-save, tagging, search, undo/redo, backup-to-disk, and optional
+Google Drive sync.
+
+| Area | Stack |
+| --- | --- |
+| UI | React 16 + react-router 5, SCSS, `@svgr/webpack` |
+| Build | webpack 5, Babel, `zip-webpack-plugin` → `dist/*.zip` |
+| Storage | IndexedDB (`sessions` object store), `storage.local` for settings, `storage.session` for ephemeral state |
+| Sync | Google Drive `appDataFolder` via OAuth2 (`identity.launchWebAuthFlow`) |
+| i18n | 34 locales via Crowdin |
+| License | MPL-2.0 |
+
+Roughly 8.3k lines of JS/JSX across `src/background`, `src/popup`, `src/options`,
+`src/settings`, `src/common`, `src/offscreen`, `src/replaced`.
+
+### Architecture at a glance
+
+- `background/background.js` — service worker; single `onMessage` switch is the app's whole RPC surface.
+  Every listener calls a lazy `init()` guard because MV3 service workers restart constantly.
+- `background/sessions.js` — thin hand-rolled IndexedDB wrapper (put/get/getAll/delete/search + a
+  cursor-streaming `getAllWithStream` used to page large session lists into the popup).
+- `background/autoSave.js` — a `temp`-tagged session is continuously rewritten (debounced 1.5 s) so
+  that window-close / browser-exit can be reconstructed from it.
+- `background/track.js` — "tracking" sessions keep a saved session in sync with a live window.
+- `background/export.js` + `offscreen/` — Chrome MV3 service workers have no `URL.createObjectURL`,
+  so exports round-trip through an offscreen document.
+- `replaced/` — the lazy-loading placeholder page; tab URL/title/favicon are carried in query params.
+
+---
+
+## 2. Build & tooling status (verified)
+
+| Check | Result |
+| --- | --- |
+| `npm install` | ✅ 634 packages, exit 0 |
+| `npm run build` | ✅ exit 0 — produced `dist/tab_session_manager-for-chrome-7.4.0.zip`, `…-for-firefox-7.4.0.zip`, `copiedSource-…zip` |
+| `npm audit` | ⚠️ 4 vulns (3 high, 1 moderate) — `brace-expansion`, `fast-uri`, `js-yaml`, `postcss`; all dev-only transitive, all fixable via `npm audit fix` |
+| `npm run format:check` | ❌ 7 files unformatted **on a clean upstream tree** (see B-07) |
+| Tests | ❌ none exist — no test runner, no test files |
+| CI | ❌ none — `.github/` has only FUNDING + issue templates |
+| Lint | ❌ none — Prettier only, no ESLint |
+
+Build warnings are size-only (popup bundle 785 KiB, background 528 KiB — no code splitting).
+
+**Note:** `src/credentials.js` did not exist and the build cannot resolve
+`background/cloudAuth.js` without it. A placeholder was created (empty strings, gitignored) purely
+to make the build run. **Drive sync will not work until real values are supplied** — see S-01.
+
+---
+
+## 3. Findings
+
+### Security / fork-specific
+
+**S-01 — You must register your own Google OAuth client. (blocking for sync)**
+`src/credentials.js` is gitignored and holds `clientId` / `clientSecret`. It is imported by
+`background/cloudAuth.js` and **bundled into the shipped extension**, so the "secret" is not secret —
+that is inherent to the installed-app OAuth flow and is fine, but it means the fork cannot reuse
+upstream's client. `identity.getRedirectURL()` is derived from the extension ID, so a fork with a
+different ID needs its own Google Cloud project, its own client, and its own registered redirect URI.
+
+**S-02 — `credentials.js` is packaged into `dist/copiedSource-*.zip`. (verified)**
+`webpack.config.dist.js` copies the whole `src` tree into the source zip (this zip exists for
+Mozilla's add-on source-review requirement). Confirmed by inspecting the built artifact: the entry
+`credentials.js` is present. Upstream publishes that zip. If you ever publish or share yours, your
+client secret goes with it. Add an ignore for `**/credentials.js` in that `CopyWebpackPlugin`
+pattern, or never distribute the source zip.
+
+**S-03 — Permission surface is broad but justified.**
+`tabs` (full URL + title of every tab), `downloads`, `unlimitedStorage`, `identity`, `alarms`,
+`offscreen`. Google host permission and `tabGroups` are correctly optional and requested on demand
+(`options/components/SignInButton.js:13`, `common/tabGroups.js:37`). Nothing exfiltrates data except
+the user-initiated Drive sync. No `content_scripts`, no remote code. Chrome and Firefox manifests
+diverge: `manifest-ff.json` additionally requests `cookies` and non-optional `tabGroups`.
+
+**S-04 — `replaced/replaced.js` HTML-escapes injected values.** `favIconUrl` is escaped before
+`insertAdjacentHTML`, and the theme value is whitelisted. Title/URL go through `innerText`/`.value`.
+No injection found. Worth keeping in mind if you extend that page — its inputs come from a URL the
+extension itself constructs, but they originate from arbitrary page titles.
+
+### Correctness bugs (all pre-existing upstream)
+
+**B-02 — `background/sessions.js:45` references an undefined `Session`.**
+`DBUpdate()` calls `Session.getAll()` / `Session.deleteAll()` / `Session.put()` — the module is
+`Sessions`. It would throw `ReferenceError` immediately. Currently harmless: the only call site is
+commented out (`background/updateOldSessions.js:16`). It is dead code — delete it or fix it before
+anyone re-enables it.
+
+**B-03 — `background/sessions.js:109` calls an undeclared `reject`.**
+Inside `deleteAll()` the promise executor is `new Promise(resolve => …)` but the `onerror` handler
+calls `reject(e)`. If deleting the database ever fails, the error handler itself throws
+`ReferenceError` and the promise hangs forever — so `deleteAllSessions()` never resolves and the UI
+gets no feedback.
+
+**B-04 — `popup/actions/controlSessions.js:232` — `session?.tabGroups.some(...)`.**
+The optional chain guards `session`, not `tabGroups`. Adding the current tab to a session that has no
+`tabGroups` key, while that tab belongs to a tab group and `saveTabGroupsV2` is on, throws
+`TypeError`. Should be `session?.tabGroups?.some(...)`.
+
+**B-05 — `background/cloudAPIs.js:32` — `file.appProperties.tag = …` unguarded.**
+The read side uses `file.appProperties?.tag?.split(",")`, but the assignment target is not optional.
+Any Drive file in the app folder without `appProperties` (hand-uploaded, or written by an older
+version) makes `listFiles()` throw, which aborts the entire sync.
+
+**B-06 — `background/export.js:20-27` can emit an empty export file.**
+`chunkSize = Math.ceil(totalStringSize / 32MB)` is computed from byte size but used to slice the
+*array*. One session larger than 32 MB gives `chunkSize = 2` while `sessions.length = 1`, so the
+first chunk slices to `[]` and the user gets an extra `… .json` containing `[]` alongside the real
+export.
+
+### Code quality / maintainability
+
+**B-07 — `npm run format:check` fails on a clean checkout.**
+Unformatted: `src/background/autoSave.js`, `src/options/components/OptionsPage.js`,
+`src/popup/components/PopupPage.js`, `src/popup/components/SessionItem.js`,
+`src/replaced/replaced.js`, `src/settings/defaultSettings.js`, `BACKERS.md`. You cannot use
+formatting as a gate until this is reset. Note `.prettierignore` excludes `_locales`, so a fix is
+safe — but running `npm run format` now creates a large diff that will conflict with every upstream
+merge. Decide this deliberately (see Recommendations).
+
+**B-08 — No tests, no CI, no linter.** For an extension whose core promise is "don't lose my tabs",
+the session-shape migration logic (`background/updateOldSessions.js`,
+`options/components/ImportSessionsComponent.js` — which parses TSM, Session Buddy, Session Manager
+and Firefox `.jsonlz4` formats) is pure, dependency-free, and the single highest-value place to add
+unit tests.
+
+**B-09 — Inconsistent `switch` scoping in `background/background.js:71-190`.**
+Some cases are brace-scoped, some are not, so `name`, `property`, `afterSession`, `beforeSession`,
+`sessions`, `currentSession` leak into the shared switch block scope. It compiles today, but adding
+one more bare `const beforeSession` to an unbraced case is an instant `SyntaxError`. Brace every case.
+
+**B-10 — Engine mismatch.** `package.json` pins `node: 24.13.0` / `npm: 11.7.0`; this machine has
+Node 24.11.1 / npm 11.6.2. Not enforced (no `engine-strict`), and the build passed — but the pin is
+exact rather than a range, so it will keep drifting.
+
+**B-11 — Comments are predominantly Japanese.** Perfectly legitimate upstream, but if you plan to
+diverge meaningfully you will be maintaining code you can't skim. Don't mass-translate (merge
+conflicts); translate opportunistically in files you actually touch.
+
+---
+
+## 4. Scope decision — local debug use only
+
+**Decided 2026-08-07:** this fork is for personal, local use as an unpacked ("Load unpacked")
+extension. It will not be published to any store, not submitted to Mozilla, not merged back
+upstream, and Google Drive sync will not be used.
+
+That retires most of section 3. The rationale is recorded here so it isn't re-litigated:
+
+| Retired | Why it no longer applies |
+| --- | --- |
+| S-01 (own OAuth client) | Sync unused. The empty placeholder `src/credentials.js` satisfies the import; the build works and the sign-in button simply fails. |
+| S-02 (`credentials.js` in source zip) | That zip only exists for Mozilla's source-review requirement. `npm run build` is never run. |
+| B-05 (`appProperties` sync crash) | Sync-only code path. |
+| Fork strategy / extension ID / `gecko.id` | Nothing to publish, nothing to merge. No `upstream` remote needed. |
+| B-07 Prettier drift, B-08 tests/CI, B-10 engines, B-11 comment language | Process hygiene for a multi-contributor project. |
+| `npm audit` (4 advisories) | All dev-only transitive deps inside the webpack toolchain. Not shipped, not reachable at runtime. |
+
+### Workflow for this fork
+
+```bash
+npm run watch-dev
+```
+
+Then `chrome://extensions` → Developer Mode → Load unpacked → `dev/chrome`.
+Verified working: `dev/chrome` builds and contains `manifest.json`, `background`, `popup`,
+`options`, `replaced`, `offscreen`, `icons`, `_locales`. The `dist` zips are not needed.
+
+### Local-only risks that replace the published-extension ones
+
+**L-01 — Extension ID is derived from the folder path.** Chrome computes an unpacked extension's
+ID from the absolute directory path. Moving or renaming this repo changes the ID, which changes the
+storage origin, which means **every saved session in IndexedDB becomes unreachable**. The same
+applies in reverse if the Web Store build is ever installed alongside — different ID, separate data,
+no migration. Either keep the folder put, or pin the ID by adding a `key` field to
+`src/manifest.json`.
+
+**L-02 — Backup export is off by default.** `ifBackup` defaults to `false`
+(`src/settings/defaultSettings.js:268`). An extension being actively edited is precisely the one
+that loses its own database. If this holds real sessions, enable backup in Options.
+
+**L-03 — B-04 is the one live bug in this configuration**, and only conditionally: the throwing
+line is gated behind `saveTabGroupsV2`, which defaults to `false` on Chrome and `true` on Firefox
+(`src/settings/defaultSettings.js:68`). Fix it if tab-group saving gets enabled.
+
+---
+
+## 5. Backlog
+
+**v7.4.2 additions:** F-01 batched restore ✅ · F-02 thumbnail capture ✅ · F-03 placeholder
+preview ✅ (see section 6). Open: verify `ifLazyLoading` is still enabled in the live profile
+(user action — Options → Open → "Tab lazy loading"); runtime testing of restore-with-thousands
+and thumbnail display (user runs the app).
+
+| ID | Item | Priority | Status |
+| --- | --- | --- | --- |
+| L-01 | Pin extension ID via `key` in `src/manifest.json` | P1 | ✅ Done (v7.4.1) — stable ID `pheckpgfalekjmbbodbggfohpghjceog`; private key in gitignored `extension-key.pem` |
+| L-02 | Enable backup export in Options if real sessions are stored | P1 | ☐ **User action** — Options → Backup, once the extension is loaded |
+| B-04 | Fix `session?.tabGroups?.some(...)` in `controlSessions.js:232` | P2 | ✅ Done (v7.4.1) |
+| B-06 | Export chunk math emits a stray empty `.json` for >32 MB sessions | P3 | ✅ Done (v7.4.1) — chunk count clamped to `sessions.length` |
+| B-03 | `reject` undeclared in `sessions.js` `deleteAll()` — error path hangs | P3 | ✅ Done (v7.4.1) |
+| B-02 | Dead `DBUpdate()` in `sessions.js` references undefined `Session` | P4 | ✅ Done (v7.4.1) — removed along with its commented-out call site |
+| B-09 | Brace `case`s declaring variables in the `background.js` message switch | P4 | ✅ Done (v7.4.1) — braced the 4 leaking cases (`saveCurrentSession`, `remove`, `getSessions`, `getCurrentSession`) |
+
+Retired, not open: S-01, S-02, B-05, B-07, B-08, B-10, B-11 — see section 4.
+
+---
+
+## 6. Fork features (v7.4.2) — mass-restore performance & thumbnails
+
+Motivated by restoring sessions with thousands of tabs freezing the machine.
+
+**F-01 — Batched tab creation** (`src/background/open.js`). Upstream fired every
+`tabs.create()` in an unthrottled loop and opened multi-window sessions in parallel — thousands of
+near-simultaneous create calls freeze the browser regardless of lazy loading. Now: tab creation
+awaits in batches of 20 (`TAB_CREATE_BATCH_SIZE`), `createTabs` is awaited at all call sites, and
+subsequent windows open sequentially. TST mode (`ifSupportTst`) keeps its original one-by-one path.
+
+**F-02 — Page thumbnail capture** (`src/background/thumbnails.js`, new). While browsing, the
+active tab is captured (`tabs.captureVisibleTab`, jpeg q70) on `tabs.onUpdated`(complete) and
+`tabs.onActivated`, throttled to once per 10 s per URL, downscaled to 500 px wide (OffscreenCanvas,
+jpeg q0.6, ~15–40 KB each), and stored in a dedicated IndexedDB `thumbnails` DB keyed by URL.
+LRU-pruned above 3000 entries. Gated by new setting `ifCaptureThumbnails` (default on, Options →
+Open, nested under lazy loading). Required adding `host_permissions: ["<all_urls>"]` to both
+manifests — fine for a local extension.
+
+**F-03 — Thumbnail shown on placeholder pages** (`src/replaced/`). The lazy-loading placeholder
+looks up the thumbnail for its target URL directly in IndexedDB (same extension origin as the
+background) and shows it under the title/URL. Applies to both the `redirect` (not-yet-loaded) and
+`open_faild` states.
+
+**F-04 — Preload & suspend sweep (v7.4.6)** (`src/background/preloadSweep.js`, new). After a
+session restore (setting `ifPreloadAfterRestore`, default on, nested under lazy loading), each
+restored window is swept in parallel, one tab at a time per window: activate the next placeholder →
+explicit `replacePage(windowId)` redirect (the passive `onActivated` path only serves the focused
+window) → wait for load (30 s timeout) → capture via the F-02 pipeline → `tabs.discard()` once the
+next tab is activated (Chrome refuses to discard the active tab, so discard always trails by one).
+Pauses while the swept window is focused (3 s recheck); toolbar badge shows the remaining count;
+original active tab of each window is re-activated at the end. End state per tab: real URL, real
+title, stored thumbnail, natively suspended. Message handlers `startPreloadSweep` (all normal
+windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trigger.
+
+**Known limits, by design:**
+- Only pages actually *viewed* get a thumbnail — background tabs can't be captured
+  (`captureVisibleTab` is active-tab-only; that's a browser restriction, same for all suspender
+  extensions). Coverage accumulates as you browse.
+- Chrome's own Memory-Saver-discarded tabs can't be given a placeholder image — the tab keeps its
+  real URL and Chrome controls the discard; placeholders only exist for tabs the extension opens.
+- Thumbnails match on exact URL.
+
+---
+
+---
+
+## 6. Review log
+
+| Date | Change |
+| --- | --- |
+| 2026-08-07 | Initial fork review at `113b272` / v7.4.0. Verified `npm install`, `npm run build`, `npm audit`, `npm run format:check`. Created placeholder `src/credentials.js`. No source changes made. |
+| 2026-08-07 | Scope narrowed to local unpacked debug use (section 4). Backlog cut from 15 items to 7; S-01, S-02, B-05, B-07, B-08, B-10, B-11 retired. Verified the dev build (`webpack.config.dev.js`) produces a loadable `dev/chrome`. Added local-only risks L-01 (path-derived extension ID) and L-02 (backup off by default). |
+| 2026-08-08 | **v7.4.7** — manual sweep button in the popup header (update icon, after the undo/redo separator): starts a sweep over all normal windows or stops the running one; shows remaining count; highlighted while active. Background broadcasts `updatePreloadSweepStatus` (on every badge update and immediately on stop) and answers `getPreloadSweepStatus` for popup init. Modified: `preloadSweep.js`, `background.js`, `PopupPage.js`, `Header.js`, `Header.scss`, en messages. Dev build clean. Unverified: runtime UI behavior — user tests. |
+| 2026-08-08 | **v7.4.6** — F-04 preload & suspend sweep (user-designed): after restore, background-load each placeholder one at a time per window, capture thumbnail, natively discard. New `preloadSweep.js`; setting `ifPreloadAfterRestore` (default on); badge progress; pause-on-focus; message handlers for manual start/stop. Dev build clean. Unverified: runtime sweep behavior — user tests. |
+| 2026-08-08 | **v7.4.5** — icon redesign: replaced the flat teal floppy-disk icon with a modern gradient mark (front browser window with tab + session-list rows, ghost window behind). Rewrote `src/icons/icon.svg` + `icon_min.svg` (dedicated simplified 16px variant), regenerated `icon.png` (64) and `icon_min.png` (16) via sharp. Same teal family, visually distinct from the store version. Dev build clean. |
+| 2026-08-08 | **v7.4.4** — incognito thumbnail capture now follows the existing `ifSavePrivateWindow` setting (default off → still never captured unless the user opted in to saving private windows). Batch size is now the `tabCreateBatchSize` setting (Options → Open, number input, min 1, default 20), read in `createTabs()` with a clamp. Dev build clean. |
+| 2026-08-08 | **v7.4.3** — privacy fix in F-02: incognito tabs are never captured/persisted (`tab.incognito` guard in `thumbnails.js`). Storage design note recorded: thumbnails intentionally live in their own IndexedDB (`thumbnails`) separate from `sessions`, because `Sessions.deleteAll()` deletes the whole `sessions` database and a shared DB would have required a version migration against real session data. Replaced page and background duplicate the v1 schema creation — must stay in lockstep if the schema ever changes. Dev build clean. |
+| 2026-08-08 | **v7.4.2** — F-01 batched/serialized tab restore, F-02 thumbnail capture module + `ifCaptureThumbnails` setting + `<all_urls>` host permission, F-03 thumbnail display on placeholder pages. New files: `src/background/thumbnails.js`. Modified: `open.js`, `background.js`, `replaced/*`, `defaultSettings.js`, `_locales/en/messages.json`, both manifests. Dev build clean (0 errors, same 26 baseline warnings). Unverified: runtime behavior (restore of a huge session, capture quality, placeholder rendering) — user tests. |
+| 2026-08-07 | **v7.4.1** — implemented L-01, B-02, B-03, B-04, B-06, B-09. Generated RSA keypair; `key` added to `src/manifest.json` (Chrome ID now stable regardless of folder path: `pheckpgfalekjmbbodbggfohpghjceog`), private key kept locally in gitignored `extension-key.pem`. Version bumped 7.4.0 → 7.4.1 in both manifests. Dev build re-verified: both webpack targets compile with 0 errors (same 26 pre-existing child-compilation warnings as baseline); `dev/chrome/manifest.json` carries the key and new version. Left unverified: runtime behavior of the fixed paths (add-tab-to-grouped-session, deleteAll error path, >32 MB export) — not exercised, code-level fixes only. |

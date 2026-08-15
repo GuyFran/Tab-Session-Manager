@@ -12,9 +12,6 @@ export default async () => {
   log.info(logDir, "updateOldSessions()");
   if (browserInfo().name != "Chrome") await migrateSessionsFromStorage();
 
-  //DBの更新が必要な場合
-  //await Sessions.DBUpdate();
-
   addNewValues();
 };
 

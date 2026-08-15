@@ -287,6 +287,30 @@
   "ifLazyLoadingCaptionLabel": {
     "message": "When opening a session, the contents of each page are not loaded until you select the tab.<br>If unchecked, memory usage greatly increases when session is restored."
   },
+  "ifCaptureThumbnailsLabel": {
+    "message": "Capture page thumbnails"
+  },
+  "ifCaptureThumbnailsCaptionLabel": {
+    "message": "Capture an image of the visible page while browsing, and display it as a preview on unloaded tab placeholders."
+  },
+  "startPreloadSweepLabel": {
+    "message": "Preload & suspend unloaded tabs"
+  },
+  "stopPreloadSweepLabel": {
+    "message": "Stop preloading tabs"
+  },
+  "ifPreloadAfterRestoreLabel": {
+    "message": "Preload & suspend restored tabs in background"
+  },
+  "ifPreloadAfterRestoreCaptionLabel": {
+    "message": "After restoring a session, load each tab one at a time per window to capture its thumbnail, then suspend it natively. Pauses while you are using the window. The toolbar badge shows the remaining count."
+  },
+  "tabCreateBatchSizeLabel": {
+    "message": "Tabs created per batch when restoring"
+  },
+  "tabCreateBatchSizeCaptionLabel": {
+    "message": "When restoring a session, tabs are created in batches of this size to avoid freezing the browser. Lower values are gentler but slower."
+  },
   "isUseDiscardedLabel": {
     "message": "Use the \"discarded\" property for lazy loading"
   },

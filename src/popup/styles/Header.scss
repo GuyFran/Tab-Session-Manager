@@ -42,7 +42,8 @@
     }
 
     .undoButton,
-    .redoButton {
+    .redoButton,
+    .sweepButton {
       position: relative;
       .count {
         position: absolute;
@@ -61,6 +62,10 @@
           fill: var(--sub-text);
         }
       }
+    }
+
+    .sweepButton.sweeping svg {
+      fill: var(--highlight);
     }
 
     .heartButton {

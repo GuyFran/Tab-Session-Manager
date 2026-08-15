@@ -229,7 +229,7 @@ export const addCurrentTab = async (sessionId, windowId) => {
   if (currentTab?.groupId > 0 && isEnabledTabGroups && getSettings("saveTabGroupsV2")) {
     const tabGroups = await queryTabGroups({ windowId: windowId });
     const currentTabGroup = tabGroups.find(group => group.id === currentTab.groupId);
-    const hasTabGroup = session?.tabGroups.some(group => group.id === currentTab.groupId);
+    const hasTabGroup = session?.tabGroups?.some(group => group.id === currentTab.groupId);
     if (currentTabGroup && !hasTabGroup) {
       session.tabGroups = (session.tabGroups || []).concat([currentTabGroup]);
     }

@@ -27,8 +27,31 @@ export default [
             type: "checkbox",
             default: true,
             shouldShow: browserInfo().name == "Firefox" && browserInfo().version >= 63
+          },
+          {
+            id: "ifCaptureThumbnails",
+            title: "ifCaptureThumbnailsLabel",
+            captions: ["ifCaptureThumbnailsCaptionLabel"],
+            type: "checkbox",
+            default: true
+          },
+          {
+            id: "ifPreloadAfterRestore",
+            title: "ifPreloadAfterRestoreLabel",
+            captions: ["ifPreloadAfterRestoreCaptionLabel"],
+            type: "checkbox",
+            default: true
           }
         ]
+      },
+      {
+        id: "tabCreateBatchSize",
+        title: "tabCreateBatchSizeLabel",
+        captions: ["tabCreateBatchSizeCaptionLabel"],
+        type: "number",
+        min: 1,
+        placeholder: 20,
+        default: 20
       },
       {
         id: "isRestoreWindowPosition",

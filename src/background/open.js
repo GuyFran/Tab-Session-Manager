@@ -5,18 +5,21 @@ import { getSettings } from "src/settings/settings";
 import { returnReplaceURL, replacePage } from "./replace.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
+import { startPreloadSweep } from "./preloadSweep.js";
 
 const logDir = "background/open";
 
 export async function openSession(session, property = "openInNewWindow") {
   log.log(logDir, "openSession()", session, property);
   let isFirstWindowFlag = true;
+  let restoredWindowIds = [];
   tabList = {};
   for (let win in session.windows) {
     const openInCurrentWindow = async () => {
       log.log(logDir, "openSession() openInCurrentWindow()");
       const currentWindow = await removeNowOpenTabs();
-      createTabs(session, win, currentWindow);
+      restoredWindowIds.push(currentWindow.id);
+      await createTabs(session, win, currentWindow);
     };
     const openInNewWindow = async () => {
       log.log(logDir, "openSession() openInNewWindow()");
@@ -67,14 +70,16 @@ export async function openSession(session, property = "openInNewWindow") {
         browser.windows.update(currentWindow.id, { state: "maximized" });
       }
 
-      createTabs(session, win, currentWindow);
+      restoredWindowIds.push(currentWindow.id);
+      await createTabs(session, win, currentWindow);
     };
     const addToCurrentWindow = async () => {
       log.log(logDir, "openSession() addToCurrentWindow()");
       const currentTabs = await browser.tabs.query({ currentWindow: true });
       const currentWinId = currentTabs[0].windowId;
       const currentWindow = await browser.windows.get(currentWinId, { populate: true });
-      createTabs(session, win, currentWindow, true);
+      restoredWindowIds.push(currentWindow.id);
+      await createTabs(session, win, currentWindow, true);
     };
 
     if (isFirstWindowFlag) {
@@ -91,9 +96,13 @@ export async function openSession(session, property = "openInNewWindow") {
           break;
       }
     } else {
-      openInNewWindow();
+      // ウィンドウを並列に開くとタブ作成のバッチ制限が効かないため、順次開く
+      await openInNewWindow();
     }
   }
+
+  // 復元完了後、バックグラウンドで各タブを順次ロードしてサムネイルを取得し、サスペンドする
+  if (getSettings("ifPreloadAfterRestore")) startPreloadSweep(restoredWindowIds);
 }
 
 const isEnabledOpenerTabId =
@@ -188,6 +197,8 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   if (currentWindow.tabs[0].pinned) {
     sortedTabs.forEach(tab => tab.index++);
   }
+  // 大量のタブを一度に作成するとブラウザがフリーズするため、まとめて作成する数を制限する
+  const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(getSettings("tabCreateBatchSize")) || 20);
   let openedTabs = [];
   let tabNumber = 0;
   for (let tab of sortedTabs) {
@@ -200,6 +211,7 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
       .catch(() => {});
     openedTabs.push(openedTab);
     if (getSettings("ifSupportTst")) await openedTab;
+    else if (openedTabs.length % TAB_CREATE_BATCH_SIZE === 0) await Promise.all(openedTabs);
   }
 
   if (isEnabledTabGroups && getSettings("saveTabGroupsV2")) {

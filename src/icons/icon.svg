@@ -1,15 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 16.933333 16.933334">
-  <g id="layer1" transform="translate(0,-280.06664)">
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:0.26458335"
-       width="12.700001"
-       height="12.699994"
-       x="2.1166668"
-       y="282.18332"
-       ry="1.2111329e-005" />
-    <path
-       style="fill:#36b2b2;fill-opacity:1;stroke-width:1"
-       d="M 0 0 L 0 64 L 64 64 L 64 15 L 64 12 L 52 0 L 0 0 z M 8 8 L 16 8 L 16 24 L 48 24 L 48 8 L 49 8 L 56 15 L 56 56 L 8 56 L 8 8 z M 36 8 L 38 8 L 40 8 L 42 8 L 42 20 L 40 20 L 38 20 L 36 20 L 36 8 z "
-       transform="matrix(0.26458334,0,0,0.26458334,0,280.06664)" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- back session window -->
+  <rect x="20" y="11" width="34" height="25" rx="3" fill="#ffffff" opacity="0.45"/>
+  <!-- front window tab -->
+  <rect x="10" y="13" width="14" height="10" rx="2" fill="#ffffff"/>
+  <!-- front window -->
+  <rect x="10" y="19" width="44" height="34" rx="4" fill="#ffffff"/>
+  <!-- window controls -->
+  <circle cx="44" cy="23" r="1.6" fill="#0f766e"/>
+  <circle cx="49" cy="23" r="1.6" fill="#0f766e"/>
+  <!-- content area -->
+  <rect x="14" y="27" width="36" height="22" rx="2" fill="#0f766e"/>
+  <!-- saved session list rows -->
+  <rect x="17" y="31" width="22" height="3.5" rx="1.75" fill="#ffffff" opacity="0.9"/>
+  <rect x="17" y="37.5" width="16" height="3.5" rx="1.75" fill="#ffffff" opacity="0.6"/>
+  <rect x="17" y="44" width="19" height="3.5" rx="1.75" fill="#ffffff" opacity="0.4"/>
 </svg>

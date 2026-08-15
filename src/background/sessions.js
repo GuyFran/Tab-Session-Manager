@@ -37,24 +37,6 @@ export default {
     });
   },
 
-  DBUpdate: async () => {
-    log.log(logDir, "DBUpdate()");
-    let sessions;
-    try {
-      sessions = await Session.getAll();
-      await Session.deleteAll();
-    } catch (e) {
-      log.error(logDir, "DBUpdate()", e);
-      return;
-    }
-
-    for (let session of sessions) {
-      await Session.put(session).catch(e => {
-        log.error(logDir, "DBUpdate()", e);
-      });
-    }
-  },
-
   put: session => {
     log.log(logDir, "put()", session);
     const db = DB;
@@ -99,7 +81,7 @@ export default {
 
     const request = indexedDB.deleteDatabase("sessions");
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         log.log(logDir, "=>deleteAll()", "success");
         resolve(Sessions.init());

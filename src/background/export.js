@@ -16,7 +16,8 @@ export default async function exportSessions(id = null, folderName = "", isBacku
   // セッションが多すぎるとメッセージサイズの制限やパフォーマンス上の問題を引き起こすので、セッションを分割する
   const sessionsStringSize = JSON.stringify(sessions).length;
   const MAX_FILE_SIZE = 32 * 1024 * 1024;
-  const chunkSize = Math.ceil(sessionsStringSize / MAX_FILE_SIZE);
+  // セッション数を超えるチャンク数にすると空のチャンクが生成されるため制限する
+  const chunkSize = Math.min(Math.ceil(sessionsStringSize / MAX_FILE_SIZE), sessions.length);
   const chunkSessions = [];
   for (let i = 0; i < chunkSize; i++) {
     chunkSessions.push(

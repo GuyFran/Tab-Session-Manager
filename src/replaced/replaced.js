@@ -54,6 +54,33 @@ if (parameter.state == "open_faild") {
     browser.i18n.getMessage("replacedPageMessage");
 }
 
+// backgroundが保存したページのサムネイルがあれば表示する
+// 拡張機能ページはbackgroundと同一オリジンなので、同じIndexedDBを直接参照できる
+const showThumbnail = () => {
+  if (!/^https?:\/\//.test(parameter.url || "")) return;
+  const request = indexedDB.open("thumbnails", 1);
+  request.onupgradeneeded = () => {
+    // backgroundのthumbnails.jsとスキーマを一致させる
+    const store = request.result.createObjectStore("thumbnails", { keyPath: "url" });
+    store.createIndex("date", "date");
+  };
+  request.onsuccess = () => {
+    try {
+      const getRequest = request.result
+        .transaction("thumbnails")
+        .objectStore("thumbnails")
+        .get(parameter.url);
+      getRequest.onsuccess = () => {
+        if (!getRequest.result?.blob) return;
+        const img = document.querySelector(".thumbnail");
+        img.src = URL.createObjectURL(getRequest.result.blob);
+        img.classList.add("visible");
+      };
+    } catch (e) {}
+  };
+};
+showThumbnail();
+
 function returnReplaceParameter(url) {
   let parameter = {};
   let paras = url.split("?")[1].split("&");

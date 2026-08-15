@@ -41,6 +41,8 @@ import { getsearchInfo } from "./search";
 import { recordChange, undo, redo, updateUndoStatus } from "./undo";
 import { compressAllSessions } from "./compressAllSessions";
 import { startTracking, endTrackingByWindowDelete, updateTrackingStatus } from "./track";
+import { handleThumbnailTabUpdated, handleThumbnailTabActivated } from "./thumbnails";
+import { startPreloadSweep, stopPreloadSweep, getPreloadSweepStatus } from "./preloadSweep";
 
 const logDir = "background/background";
 
@@ -77,21 +79,23 @@ const onMessageListener = async (request, sender, sendResponse) => {
       recordChange(null, afterSession);
       return afterSession;
     }
-    case "saveCurrentSession":
+    case "saveCurrentSession": {
       const name = request.name;
       const property = request.property;
       const afterSession = await saveCurrentSession(name, [], property);
       recordChange(null, afterSession);
       return afterSession;
+    }
     case "open":
       if (request.property === "openInCurrentWindow") await autoSaveWhenOpenInCurrentWindow();
       openSession(request.session, request.property);
       break;
-    case "remove":
+    case "remove": {
       const beforeSession = await getSessions(request.id);
       await removeSession(request.id, request.isSendResponce);
       recordChange(beforeSession, null);
       break;
+    }
     case "rename": {
       const beforeSession = await getSessions(request.id);
       const afterSession = await renameSession(request.id, request.name);
@@ -113,9 +117,10 @@ const onMessageListener = async (request, sender, sendResponse) => {
     case "deleteAllSessions":
       deleteAllSessions();
       break;
-    case "getSessions":
+    case "getSessions": {
       const sessions = await getSessions(request.id, request.needKeys);
       return sessions;
+    }
     case "addTag": {
       const beforeSession = await getSessions(request.id);
       const afterSession = await addTag(request.id, request.tag);
@@ -130,9 +135,10 @@ const onMessageListener = async (request, sender, sendResponse) => {
     }
     case "getInitState":
       return IsInit;
-    case "getCurrentSession":
+    case "getCurrentSession": {
       const currentSession = await loadCurrentSession("", [], request.property).catch(() => {});
       return currentSession;
+    }
     case "signInGoogle":
       return await signInGoogle();
     case "signOutGoogle":
@@ -180,6 +186,12 @@ const onMessageListener = async (request, sender, sendResponse) => {
       return startTracking(request.sessionId, request.originalWindowId, request.openedWindowId);
     case "endTrackingByWindowDelete":
       return endTrackingByWindowDelete(request.sessionId, request.originalWindowId);
+    case "startPreloadSweep":
+      return startPreloadSweep(request.windowIds);
+    case "stopPreloadSweep":
+      return stopPreloadSweep();
+    case "getPreloadSweepStatus":
+      return getPreloadSweepStatus();
   }
 };
 
@@ -194,6 +206,17 @@ const onChangeStorageListener = async (changes, areaName) => {
   setAutoSave(changes, areaName);
   updateLogLevel();
   resetLastBackupTime(changes);
+};
+
+// サムネイルのキャプチャはgetSettingsに依存するため、initの完了を待つ
+const onThumbnailTabUpdatedListener = async (tabId, changeInfo, tab) => {
+  await init();
+  handleThumbnailTabUpdated(tabId, changeInfo, tab);
+};
+
+const onThumbnailTabActivatedListener = async activeInfo => {
+  await init();
+  handleThumbnailTabActivated(activeInfo);
 };
 
 const onAlarmListener = async alarmInfo => {
@@ -215,6 +238,8 @@ browser.commands.onCommand.addListener(onCommandListener);
 browser.tabs.onActivated.addListener(handleReplace);
 browser.windows.onFocusChanged.addListener(handleReplace);
 browser.tabs.onUpdated.addListener(handleTabUpdated);
+browser.tabs.onUpdated.addListener(onThumbnailTabUpdatedListener);
+browser.tabs.onActivated.addListener(onThumbnailTabActivatedListener);
 browser.tabs.onRemoved.addListener(handleTabRemoved);
 browser.tabs.onCreated.addListener(setUpdateTempTimer);
 browser.tabs.onMoved.addListener(setUpdateTempTimer);
