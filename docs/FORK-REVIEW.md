@@ -2,6 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
+**Last reassessed:** 2026-08-16 at `3c8bf9d`; current working version **7.4.8** (unbuilt — see E-01)
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -206,6 +207,10 @@ and thumbnail display (user runs the app).
 
 | ID | Item | Priority | Status |
 | --- | --- | --- | --- |
+| E-01 | Restore Node toolchain — no `node`/`npm` on PATH, no `node_modules/`. Nothing can be built or loaded until this is fixed. (`src/credentials.js` placeholder recreated 2026-08-16 during the integrity sweep.) | P0 | ☐ **User action** — reinstall Node 24.13.0 / npm 11.7.0 (`package.json` `engines`), then `npm ci && npm run build` |
+| F-05 | Incognito restore uses discard-on-create; sweep covers discarded incognito tabs | P1 | ✅ Done (v7.4.8) — unbuilt, untested |
+| P-01 | Sweep thrashes auto-save: each swept tab fires `tabs.onUpdated`(complete) → `setUpdateTempTimer` → a full temp-session rewrite. On a mass restore that is one whole-profile serialisation per tab, in the exact scenario the sweep exists to make bearable. Suppress `setUpdateTempTimer` while `isSweeping`. | P1 | ☐ Open |
+| P-02 | Header sweep button is always enabled, but `startPreloadSweep` returns silently when `ifLazyLoading` is off — click does nothing, no feedback | P3 | ☐ Open |
 | L-01 | Pin extension ID via `key` in `src/manifest.json` | P1 | ✅ Done (v7.4.1) — stable ID `pheckpgfalekjmbbodbggfohpghjceog`; private key in gitignored `extension-key.pem` |
 | L-02 | Enable backup export in Options if real sessions are stored | P1 | ☐ **User action** — Options → Backup, once the extension is loaded |
 | B-04 | Fix `session?.tabGroups?.some(...)` in `controlSessions.js:232` | P2 | ✅ Done (v7.4.1) |
@@ -252,6 +257,18 @@ original active tab of each window is re-activated at the end. End state per tab
 title, stored thumbnail, natively suspended. Message handlers `startPreloadSweep` (all normal
 windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trigger.
 
+**F-05 — Incognito restore (v7.4.8)** (`src/background/open.js`, `src/background/preloadSweep.js`).
+Chrome refuses to load extension pages in incognito windows under `"incognito": "spanning"`, so the
+lazy-loading placeholder was skipped there (upstream `open.js`) and every restored incognito tab
+loaded its real URL immediately — F-01/F-04 did nothing and a large incognito session loaded in full.
+Now, when the placeholder is unavailable, each non-active tab is created with its real URL and
+`tabs.discard()`ed straight away (one retry after 500 ms, since a freshly created tab is briefly
+undiscardable), which reaches the same unloaded end state by a different route. The sweep's target
+predicate widened from "is a redirect placeholder" to "is a redirect placeholder **or** is a
+discarded incognito tab", so incognito windows now get the same load → capture → re-suspend pass and
+recover their real titles. Discarded tabs in *normal* windows are deliberately excluded — those were
+suspended by the user or by Chrome's Memory Saver and are not ours to reload.
+
 **Known limits, by design:**
 - Only pages actually *viewed* get a thumbnail — background tabs can't be captured
   (`captureVisibleTab` is active-tab-only; that's a browser restriction, same for all suspender
@@ -259,6 +276,15 @@ windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trig
 - Chrome's own Memory-Saver-discarded tabs can't be given a placeholder image — the tab keeps its
   real URL and Chrome controls the discard; placeholders only exist for tabs the extension opens.
 - Thumbnails match on exact URL.
+- Incognito tabs briefly show their URL instead of the saved title, until the sweep loads them once.
+  A placeholder would have shown the title immediately; discarding cannot.
+- Incognito thumbnails are still gated by `ifSavePrivateWindow` (default off), so by default an
+  incognito sweep loads and re-suspends but stores nothing. That is the v7.4.3 privacy decision.
+- Re-running a **manual** sweep re-processes incognito tabs, because a swept tab returns to the
+  "discarded incognito" state that defines the target set. Harmless but not free. The automatic
+  post-restore sweep is unaffected.
+- All of this requires "Allow in Incognito" to be enabled for the extension in `chrome://extensions`.
+  Without it the extension cannot see incognito windows at all and nothing here applies.
 
 ---
 
@@ -268,6 +294,9 @@ windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trig
 
 | Date | Change |
 | --- | --- |
+| 2026-08-16 | **v7.4.9** — F-06 incognito restore flooding. `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier (`await Promise.all`) only waited for `tabs.create` to return, not for the discard. Restoring a large private session created every tab with its real URL and let hundreds of loads start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`, which makes the existing batch boundary meaningful — at most one batch is briefly loading at a time. Added setting `incognitoTabCreateBatchSize` (default 20, min 1) so private-window batching can be tuned separately from `tabCreateBatchSize`; `createTabs()` picks between the two via `isEnabledPlaceholder(currentWindow)`. **Not built or run — Node absent (E-01).** |
+| 2026-08-16 | **v7.4.8** — F-05 incognito restore (see section 6). `open.js`: extracted `isEnabledPlaceholder()`, added `discardAfterCreate()` with one retry, and stopped substituting the `open_faild` placeholder in windows that cannot display it. `preloadSweep.js`: new `isSweepTarget()` covering discarded incognito tabs, per-window `processedTabIds` set so a re-suspended tab is not swept twice in one run, seeding count switched to the same predicate (fixes a badge that never reached zero), `replacePage()` now only called for actual placeholders, and the sweep body wrapped in `try/finally` so `isSweeping` cannot latch on. Also fixed a latent crash in `openTab()`'s fallback path where a failed second `tabs.create` fell through to `newTab.id`. **Not built or run — Node is absent from this machine (see below); code-level change only.** |
+| 2026-08-16 | Reassessment at `3c8bf9d` / v7.4.7. Confirmed the fork is 1 commit ahead of `sienori/master` (still v7.4.0) and in sync with origin. Build prerequisites have gone missing since 2026-08-08: no `node`/`npm` on PATH anywhere on the machine, no `node_modules/`, no `src/credentials.js`, no `extension-key.pem`. Open review findings recorded against the v7.4.7 sweep: auto-save thrash during sweeps (below), and the sweep button not reflecting `ifLazyLoading`. |
 | 2026-08-07 | Initial fork review at `113b272` / v7.4.0. Verified `npm install`, `npm run build`, `npm audit`, `npm run format:check`. Created placeholder `src/credentials.js`. No source changes made. |
 | 2026-08-07 | Scope narrowed to local unpacked debug use (section 4). Backlog cut from 15 items to 7; S-01, S-02, B-05, B-07, B-08, B-10, B-11 retired. Verified the dev build (`webpack.config.dev.js`) produces a loadable `dev/chrome`. Added local-only risks L-01 (path-derived extension ID) and L-02 (backup off by default). |
 | 2026-08-08 | **v7.4.7** — manual sweep button in the popup header (update icon, after the undo/redo separator): starts a sweep over all normal windows or stops the running one; shows remaining count; highlighted while active. Background broadcasts `updatePreloadSweepStatus` (on every badge update and immediately on stop) and answers `getPreloadSweepStatus` for popup init. Modified: `preloadSweep.js`, `background.js`, `PopupPage.js`, `Header.js`, `Header.scss`, en messages. Dev build clean. Unverified: runtime UI behavior — user tests. |

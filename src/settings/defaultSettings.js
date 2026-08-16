@@ -54,6 +54,15 @@ export default [
         default: 20
       },
       {
+        id: "incognitoTabCreateBatchSize",
+        title: "incognitoTabCreateBatchSizeLabel",
+        captions: ["incognitoTabCreateBatchSizeCaptionLabel"],
+        type: "number",
+        min: 1,
+        placeholder: 20,
+        default: 20
+      },
+      {
         id: "isRestoreWindowPosition",
         title: "isRestoreWindowPositionLabel",
         captions: ["isRestoreWindowPositionCaptionLabel"],

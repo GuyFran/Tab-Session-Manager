@@ -112,6 +112,30 @@ const isEnabledDiscarded = browserInfo().name == "Firefox" && browserInfo().vers
 const isEnabledOpenInReaderMode = browserInfo().name == "Firefox" && browserInfo().version >= 58;
 const isEnabledWindowTitle = browserInfo().name == "Firefox";
 
+// Chromeのincognitoウィンドウでは拡張機能ページ(placeholder)を開けないため、遅延読み込みが効かない
+const isEnabledPlaceholder = currentWindow =>
+  !(browserInfo().name === "Chrome" && currentWindow.incognito);
+
+const DISCARD_RETRY_DELAY_MS = 500;
+
+// placeholderの代わりに生成直後のタブをdiscardして、読み込みを止める
+// 生成直後は破棄できないことがあるため、失敗したら一度だけ再試行する
+const discardAfterCreate = async tabId => {
+  const tryDiscard = async () => {
+    try {
+      await browser.tabs.discard(tabId);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  if (await tryDiscard()) return;
+  await new Promise(resolve => setTimeout(resolve, DISCARD_RETRY_DELAY_MS));
+  if (await tryDiscard()) return;
+  log.warn(logDir, "discardAfterCreate() failed", tabId);
+};
+
 //ウィンドウとタブを閉じてcurrentWindowを返す
 async function removeNowOpenTabs() {
   log.log(logDir, "removeNowOpenTabs()");
@@ -198,7 +222,11 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
     sortedTabs.forEach(tab => tab.index++);
   }
   // 大量のタブを一度に作成するとブラウザがフリーズするため、まとめて作成する数を制限する
-  const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(getSettings("tabCreateBatchSize")) || 20);
+  // placeholderを開けないウィンドウのタブは生成直後に一瞬読み込まれるため、別枠で上限を設ける
+  const batchSizeSetting = isEnabledPlaceholder(currentWindow)
+    ? getSettings("tabCreateBatchSize")
+    : getSettings("incognitoTabCreateBatchSize");
+  const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(batchSizeSetting) || 20);
   let openedTabs = [];
   let tabNumber = 0;
   for (let tab of sortedTabs) {
@@ -266,17 +294,18 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false) {
     }
 
     //Lazy loading
+    let shouldDiscardAfterCreate = false;
     if (getSettings("ifLazyLoading")) {
       if (getSettings("isUseDiscarded") && isEnabledDiscarded) {
         if (!createOption.active && !createOption.pinned) {
           createOption.discarded = true;
           createOption.title = tab.title;
         }
-      } else {
-        // Chromeのincognitoウィンドウでは拡張機能ページを開けないため
-        if (!(browserInfo().name === "Chrome" && currentWindow.incognito)) {
-          createOption.url = returnReplaceURL("redirect", tab.title, tab.url, tab.favIconUrl);
-        }
+      } else if (isEnabledPlaceholder(currentWindow)) {
+        createOption.url = returnReplaceURL("redirect", tab.title, tab.url, tab.favIconUrl);
+      } else if (!createOption.active) {
+        // placeholderを開けないウィンドウでは、生成直後にdiscardして遅延読み込み相当の動作にする
+        shouldDiscardAfterCreate = true;
       }
     }
 
@@ -300,17 +329,23 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false) {
       try {
         const newTab = await browser.tabs.create(createOption);
         tabList[tab.id] = newTab.id;
+        // discardを待ってからresolveする。待たないとバッチの区切りが効かず、
+        // discardが走る前に次のバッチが作られて大量のタブが同時に読み込まれる
+        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id);
         resolve();
       } catch (e) {
         log.warn(logDir, "openTab() tryOpen() replace", e);
         const isRemovedContainer = e.message.startsWith("No cookie store exists with ID");
         if (isRemovedContainer) delete createOption.cookieStoreId;
-        else createOption.url = returnReplaceURL("open_faild", tab.title, tab.url, tab.favIconUrl);
+        // placeholderを開けないウィンドウでは代替ページを出せないので、元のURLのまま再試行する
+        else if (isEnabledPlaceholder(currentWindow))
+          createOption.url = returnReplaceURL("open_faild", tab.title, tab.url, tab.favIconUrl);
         const newTab = await browser.tabs.create(createOption).catch(e => {
           log.error(logDir, "openTab() tryOpen() create", e);
-          reject();
-        }); //タブを開けなかった場合はreject
+        });
+        if (!newTab) return reject(); //タブを開けなかった場合はreject
         tabList[tab.id] = newTab.id;
+        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id);
         resolve();
       }
     };

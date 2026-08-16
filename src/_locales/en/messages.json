@@ -311,6 +311,12 @@
   "tabCreateBatchSizeCaptionLabel": {
     "message": "When restoring a session, tabs are created in batches of this size to avoid freezing the browser. Lower values are gentler but slower."
   },
+  "incognitoTabCreateBatchSizeLabel": {
+    "message": "Tabs created per batch when restoring a private window"
+  },
+  "incognitoTabCreateBatchSizeCaptionLabel": {
+    "message": "Private windows cannot show the lazy-loading placeholder, so each restored tab briefly starts loading before it is suspended. This limits how many do so at once. Lower this if restoring a large private session overwhelms your connection."
+  },
   "isUseDiscardedLabel": {
     "message": "Use the \"discarded\" property for lazy loading"
   },

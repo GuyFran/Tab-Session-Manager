@@ -46,6 +46,11 @@ const isRedirectPlaceholder = tab => {
   return parameter.isReplaced && parameter.state === "redirect";
 };
 
+// placeholderを開けないウィンドウ(Chromeのincognito)では、復元時にdiscard済みで生成されるため、
+// incognitoのdiscard済みタブも同じようにスウィープ対象とする
+// 通常ウィンドウのdiscard済みタブはユーザやブラウザが破棄したものなので、対象にしない
+const isSweepTarget = tab => isRedirectPlaceholder(tab) || (tab.incognito && tab.discarded);
+
 // ユーザが操作中のウィンドウには干渉しないよう、フォーカスが外れるまで待つ
 const waitWhileWindowFocused = async windowId => {
   while (!shouldStop) {
@@ -72,12 +77,17 @@ const sweepWindow = async windowId => {
     await browser.tabs.query({ windowId: windowId, active: true }).catch(() => [])
   )[0];
 
+  // 処理済みのタブは再度スウィープ対象の状態に戻るため、明示的に記録して二度処理しない
+  const processedTabIds = new Set();
   let previousTabId = null;
   while (!shouldStop) {
     const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => null);
     if (!tabs) break; //ウィンドウが閉じられた
-    const nextTab = tabs.find(tab => !tab.active && !tab.discarded && isRedirectPlaceholder(tab));
+    const nextTab = tabs.find(
+      tab => !tab.active && !processedTabIds.has(tab.id) && isSweepTarget(tab)
+    );
     if (!nextTab) break;
+    processedTabIds.add(nextTab.id);
 
     await waitWhileWindowFocused(windowId);
     if (shouldStop) break;
@@ -87,7 +97,8 @@ const sweepWindow = async windowId => {
     if (previousTabId != null) browser.tabs.discard(previousTabId).catch(() => {});
 
     // onActivated経由のreplacePageはフォーカス中のウィンドウを対象とするため、明示的に呼ぶ
-    replacePage(windowId);
+    // discard済みタブはアクティブ化でブラウザが実URLを読み込むので、redirectは不要
+    if (isRedirectPlaceholder(nextTab)) replacePage(windowId);
     const loadedTab = await waitForLoad(nextTab.id);
     if (loadedTab && loadedTab.status === "complete") {
       await sleep(RENDER_DELAY_MS);
@@ -113,31 +124,35 @@ export const startPreloadSweep = async windowIds => {
   isSweeping = true;
   shouldStop = false;
 
-  //windowIds未指定なら全ての通常ウィンドウを対象にする
-  if (!windowIds) {
-    const windows = await browser.windows.getAll().catch(() => []);
-    windowIds = windows.filter(window => window.type === "normal").map(window => window.id);
+  try {
+    //windowIds未指定なら全ての通常ウィンドウを対象にする
+    // incognitoウィンドウは、拡張機能がincognitoで許可されている場合のみ取得できる
+    if (!windowIds) {
+      const windows = await browser.windows.getAll().catch(() => []);
+      windowIds = windows.filter(window => window.type === "normal").map(window => window.id);
+    }
+    log.info(logDir, "startPreloadSweep()", windowIds);
+
+    remainingCount = 0;
+    for (const windowId of windowIds) {
+      const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => []);
+      remainingCount += tabs.filter(tab => !tab.active && isSweepTarget(tab)).length;
+    }
+    updateBadge();
+
+    // ウィンドウごとに並行して、ウィンドウ内では1タブずつ順番に処理する
+    await Promise.all(
+      windowIds.map(windowId =>
+        sweepWindow(windowId).catch(e => log.error(logDir, "sweepWindow()", e))
+      )
+    );
+    log.info(logDir, "=>startPreloadSweep() finished");
+  } finally {
+    // 途中で失敗してもスウィープ中の状態が残らないようにする
+    remainingCount = 0;
+    isSweeping = false;
+    updateBadge();
   }
-  log.info(logDir, "startPreloadSweep()", windowIds);
-
-  remainingCount = 0;
-  for (const windowId of windowIds) {
-    const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => []);
-    remainingCount += tabs.filter(tab => !tab.active && isRedirectPlaceholder(tab)).length;
-  }
-  updateBadge();
-
-  // ウィンドウごとに並行して、ウィンドウ内では1タブずつ順番に処理する
-  await Promise.all(
-    windowIds.map(windowId =>
-      sweepWindow(windowId).catch(e => log.error(logDir, "sweepWindow()", e))
-    )
-  );
-
-  remainingCount = 0;
-  updateBadge();
-  isSweeping = false;
-  log.info(logDir, "=>startPreloadSweep() finished");
 };
 
 export const stopPreloadSweep = () => {
