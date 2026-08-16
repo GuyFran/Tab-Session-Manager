@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-16 at `3c8bf9d`; current working version **7.4.8** (unbuilt — see E-01)
+**Last reassessed:** 2026-08-17 at `ca016db`; current version **7.4.9**, dev build verified clean
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -207,7 +207,7 @@ and thumbnail display (user runs the app).
 
 | ID | Item | Priority | Status |
 | --- | --- | --- | --- |
-| E-01 | Restore Node toolchain — no `node`/`npm` on PATH, no `node_modules/`. Nothing can be built or loaded until this is fixed. (`src/credentials.js` placeholder recreated 2026-08-16 during the integrity sweep.) | P0 | ☐ **User action** — reinstall Node 24.13.0 / npm 11.7.0 (`package.json` `engines`), then `npm ci && npm run build` |
+| E-01 | Restore Node toolchain | P0 | ✅ Done (2026-08-17) — Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS`; `npm ci` restored 634 packages; dev build clean. `src/credentials.js` placeholder recreated 2026-08-16. |
 | F-05 | Incognito restore uses discard-on-create; sweep covers discarded incognito tabs | P1 | ✅ Done (v7.4.8) — unbuilt, untested |
 | P-01 | Sweep thrashes auto-save: each swept tab fires `tabs.onUpdated`(complete) → `setUpdateTempTimer` → a full temp-session rewrite. On a mass restore that is one whole-profile serialisation per tab, in the exact scenario the sweep exists to make bearable. Suppress `setUpdateTempTimer` while `isSweeping`. | P1 | ☐ Open |
 | P-02 | Header sweep button is always enabled, but `startPreloadSweep` returns silently when `ifLazyLoading` is off — click does nothing, no feedback | P3 | ☐ Open |
@@ -294,6 +294,7 @@ suspended by the user or by Chrome's Memory Saver and are not ours to reload.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-17 | **Toolchain restored (E-01).** Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS` (24.x line; `engines` pins 24.13.0 but is not enforced — no `.npmrc`). `npm ci` → 634 packages. `npx webpack --config webpack.config.dev.js` compiles clean: **0 errors**, 26 warnings (all `moment` dynamic-locale requires, upstream). `dev/chrome` and `dev/firefox` produced; `dev/chrome/manifest.json` reports 7.4.9 with the `key` present, and both `discardAfterCreate` and `incognitoTabCreateBatchSize` are present in the emitted `background/background.js`. `npm run format:check` fails on 7 files (`autoSave.js`, `OptionsPage.js`, `PopupPage.js`, `SessionItem.js`, `replaced.js`, `defaultSettings.js`, `BACKERS.md`) — **all pre-existing upstream**, verified by checking the pre-7.4.9 blob against the project's own `.prettierrc`; no fork change introduced any of them. `npm audit` reports 5 vulnerabilities (1 moderate, 4 high) — dev-dependency chain, not yet triaged. |
 | 2026-08-16 | **v7.4.9** — F-06 incognito restore flooding. `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier (`await Promise.all`) only waited for `tabs.create` to return, not for the discard. Restoring a large private session created every tab with its real URL and let hundreds of loads start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`, which makes the existing batch boundary meaningful — at most one batch is briefly loading at a time. Added setting `incognitoTabCreateBatchSize` (default 20, min 1) so private-window batching can be tuned separately from `tabCreateBatchSize`; `createTabs()` picks between the two via `isEnabledPlaceholder(currentWindow)`. **Not built or run — Node absent (E-01).** |
 | 2026-08-16 | **v7.4.8** — F-05 incognito restore (see section 6). `open.js`: extracted `isEnabledPlaceholder()`, added `discardAfterCreate()` with one retry, and stopped substituting the `open_faild` placeholder in windows that cannot display it. `preloadSweep.js`: new `isSweepTarget()` covering discarded incognito tabs, per-window `processedTabIds` set so a re-suspended tab is not swept twice in one run, seeding count switched to the same predicate (fixes a badge that never reached zero), `replacePage()` now only called for actual placeholders, and the sweep body wrapped in `try/finally` so `isSweeping` cannot latch on. Also fixed a latent crash in `openTab()`'s fallback path where a failed second `tabs.create` fell through to `newTab.id`. **Not built or run — Node is absent from this machine (see below); code-level change only.** |
 | 2026-08-16 | Reassessment at `3c8bf9d` / v7.4.7. Confirmed the fork is 1 commit ahead of `sienori/master` (still v7.4.0) and in sync with origin. Build prerequisites have gone missing since 2026-08-08: no `node`/`npm` on PATH anywhere on the machine, no `node_modules/`, no `src/credentials.js`, no `extension-key.pem`. Open review findings recorded against the v7.4.7 sweep: auto-save thrash during sweeps (below), and the sweep button not reflecting `ifLazyLoading`. |
