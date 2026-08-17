@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-17; current version **7.4.10**, dev build verified clean
+**Last reassessed:** 2026-08-17; current version **7.4.11**, dev build verified clean
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -278,7 +278,7 @@ suspended by the user or by Chrome's Memory Saver and are not ours to reload.
 restoring a large private session created every tab with its real URL and let hundreds of loads
 start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`,
 which makes the existing batch boundary meaningful: at most one batch's worth of tabs is briefly
-loading at a time. New setting `incognitoTabCreateBatchSize` (Options → Open, default 20, min 1)
+loading at a time. New setting `incognitoTabCreateBatchSize` (Options → Open, default 5, min 1)
 lets private-window batching be tuned independently of `tabCreateBatchSize`; `createTabs()` picks
 between the two via `isEnabledPlaceholder(currentWindow)`.
 
@@ -305,6 +305,7 @@ between the two via `isEnabledPlaceholder(currentWindow)`.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-17 | **v7.4.11** — Lowered the configurable `incognitoTabCreateBatchSize` default and invalid/missing-value fallback from 20 to 5, reducing concurrent brief real-URL loads during a private-window restore. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-17 | **v7.4.10** — P-01/P-02. `autoSave.js` now ignores temp-session scheduling while `preloadSweep.js` reports an active sweep, preventing one whole-profile serialization per swept tab. The popup sweep control is disabled (and titled "Tab lazy loading") if lazy loading is off, so it no longer offers an action the background silently rejects. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Real-Chrome testing of F-05/F-06 could not be run in this environment because Chrome is not connected to the desktop automation bridge; runtime verification remains pending. |
 | 2026-08-17 | **Documentation pass.** Added [`AGENTS.md`](../AGENTS.md) at repo root as the handoff doc for future AI agents (read order, hard constraints, build steps, current status, open backlog highlights). Cleansed this file: section 2 rewritten from the 2026-08-07 baseline (`npm install`/`dist` zips/7.4.0 bundle sizes) to the current, actually-verified state (`npm ci`, dev build, current bundle sizes, current `npm audit` count); fixed a duplicate `## 6.` heading (Review log is now section 7) and a stray doubled `---` separator; added an F-06 entry to section 6 documenting the v7.4.9 incognito-flooding fix, which previously only existed in the changelog below. No extension code changed, no version bump. |
 | 2026-08-17 | **Toolchain restored (E-01).** Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS` (24.x line; `engines` pins 24.13.0 but is not enforced — no `.npmrc`). `npm ci` → 634 packages. `npx webpack --config webpack.config.dev.js` compiles clean: **0 errors**, 26 warnings (all `moment` dynamic-locale requires, upstream). `dev/chrome` and `dev/firefox` produced; `dev/chrome/manifest.json` reports 7.4.9 with the `key` present, and both `discardAfterCreate` and `incognitoTabCreateBatchSize` are present in the emitted `background/background.js`. `npm run format:check` fails on 7 files (`autoSave.js`, `OptionsPage.js`, `PopupPage.js`, `SessionItem.js`, `replaced.js`, `defaultSettings.js`, `BACKERS.md`) — **all pre-existing upstream**, verified by checking the pre-7.4.9 blob against the project's own `.prettierrc`; no fork change introduced any of them. `npm audit` reports 5 vulnerabilities (1 moderate, 4 high) — dev-dependency chain, not yet triaged. |

@@ -226,7 +226,8 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   const batchSizeSetting = isEnabledPlaceholder(currentWindow)
     ? getSettings("tabCreateBatchSize")
     : getSettings("incognitoTabCreateBatchSize");
-  const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(batchSizeSetting) || 20);
+  const defaultBatchSize = isEnabledPlaceholder(currentWindow) ? 20 : 5;
+  const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(batchSizeSetting) || defaultBatchSize);
   let openedTabs = [];
   let tabNumber = 0;
   for (let tab of sortedTabs) {

@@ -59,8 +59,8 @@ export default [
         captions: ["incognitoTabCreateBatchSizeCaptionLabel"],
         type: "number",
         min: 1,
-        placeholder: 20,
-        default: 20
+        placeholder: 5,
+        default: 5
       },
       {
         id: "isRestoreWindowPosition",
