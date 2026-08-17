@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-17; current version **7.4.11**, dev build verified clean
+**Last reassessed:** 2026-08-18; current version **7.4.12**, dev build verified clean
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -305,6 +305,7 @@ between the two via `isEnabledPlaceholder(currentWindow)`.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-18 | **v7.4.12** — Incognito restore routing and batching. A saved private window now always opens in a new private Chrome window, even when the popup's default action is “open in current window”; it cannot leak into the regular popup window. Newly created windows are explicitly re-read with `populate: true` before their initial tab is used. `createTabs()` now awaits the final partial batch before moving to another window or starting the sweep. Existing profiles whose persisted private batch setting was the old default of 20 are migrated once to 5; subsequent user-selected values remain untouched. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Runtime verification remains pending. |
 | 2026-08-17 | **v7.4.11** — Lowered the configurable `incognitoTabCreateBatchSize` default and invalid/missing-value fallback from 20 to 5, reducing concurrent brief real-URL loads during a private-window restore. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-17 | **v7.4.10** — P-01/P-02. `autoSave.js` now ignores temp-session scheduling while `preloadSweep.js` reports an active sweep, preventing one whole-profile serialization per swept tab. The popup sweep control is disabled (and titled "Tab lazy loading") if lazy loading is off, so it no longer offers an action the background silently rejects. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Real-Chrome testing of F-05/F-06 could not be run in this environment because Chrome is not connected to the desktop automation bridge; runtime verification remains pending. |
 | 2026-08-17 | **Documentation pass.** Added [`AGENTS.md`](../AGENTS.md) at repo root as the handoff doc for future AI agents (read order, hard constraints, build steps, current status, open backlog highlights). Cleansed this file: section 2 rewritten from the 2026-08-07 baseline (`npm install`/`dist` zips/7.4.0 bundle sizes) to the current, actually-verified state (`npm ci`, dev build, current bundle sizes, current `npm audit` count); fixed a duplicate `## 6.` heading (Review log is now section 7) and a stray doubled `---` separator; added an F-06 entry to section 6 documenting the v7.4.9 incognito-flooding fix, which previously only existed in the changelog below. No extension code changed, no version bump. |

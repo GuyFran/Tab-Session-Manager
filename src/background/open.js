@@ -15,6 +15,7 @@ export async function openSession(session, property = "openInNewWindow") {
   let restoredWindowIds = [];
   tabList = {};
   for (let win in session.windows) {
+    const isIncognitoWindow = Object.values(session.windows[win]).some(tab => tab.incognito);
     const openInCurrentWindow = async () => {
       log.log(logDir, "openSession() openInCurrentWindow()");
       const currentWindow = await removeNowOpenTabs();
@@ -66,6 +67,10 @@ export async function openSession(session, property = "openInNewWindow") {
         });
       }
 
+      // windows.create() does not guarantee a populated tabs array. Fetch the
+      // new window explicitly before selecting/removing its initial tab.
+      currentWindow = await browser.windows.get(currentWindow.id, { populate: true });
+
       if (isSetPosition && session.windowsInfo[win].state == "maximized") {
         browser.windows.update(currentWindow.id, { state: "maximized" });
       }
@@ -84,6 +89,12 @@ export async function openSession(session, property = "openInNewWindow") {
 
     if (isFirstWindowFlag) {
       isFirstWindowFlag = false;
+      // A saved private window must never be restored into the regular window
+      // that hosts the popup, even if that is the user's default open action.
+      if (isIncognitoWindow && property !== "openInNewWindow") {
+        await openInNewWindow();
+        continue;
+      }
       switch (property) {
         case "openInCurrentWindow":
           await openInCurrentWindow();
@@ -243,18 +254,19 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
     else if (openedTabs.length % TAB_CREATE_BATCH_SIZE === 0) await Promise.all(openedTabs);
   }
 
+  // Await the final partial batch before opening another saved window or
+  // starting the sweep; otherwise those tabs can all remain in flight.
+  await Promise.all(openedTabs);
+
   if (isEnabledTabGroups && getSettings("saveTabGroupsV2")) {
-    await Promise.all(openedTabs);
     createTabGroups(currentWindow.id, sortedTabs, session.tabGroups || []);
   }
 
   if (isEnabledWindowTitle) {
-    await Promise.all(openedTabs);
     setWindowTitle(session, win, currentWindow);
   }
 
   if (isTrackingSession(session.tag)) {
-    await Promise.all(openedTabs);
     startTracking(session.id, win, currentWindow.id);
   }
 }

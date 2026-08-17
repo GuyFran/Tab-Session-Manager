@@ -88,8 +88,7 @@ const onMessageListener = async (request, sender, sendResponse) => {
     }
     case "open":
       if (request.property === "openInCurrentWindow") await autoSaveWhenOpenInCurrentWindow();
-      openSession(request.session, request.property);
-      break;
+      return await openSession(request.session, request.property);
     case "remove": {
       const beforeSession = await getSessions(request.id);
       await removeSession(request.id, request.isSendResponce);

@@ -6,8 +6,9 @@ const logDir = "settings/settings";
 let currentSettings = {};
 
 export const initSettings = async () => {
-  const response = await browser.storage.local.get("Settings");
+  const response = await browser.storage.local.get(["Settings", "SettingsMigrations"]);
   currentSettings = response.Settings || {};
+  const migrations = response.SettingsMigrations || {};
   let shouldSave = false;
 
   const pushSettings = element => {
@@ -32,7 +33,21 @@ export const initSettings = async () => {
   };
 
   fetchDefaultSettings();
-  if (shouldSave) await browser.storage.local.set({ Settings: currentSettings });
+  // v7.4.11 lowered the private-restore default from 20 to 5. Existing
+  // profiles already have the old default persisted, so migrate it once
+  // without overriding any choice made after this migration.
+  if (!migrations.incognitoTabBatchSize5) {
+    if (currentSettings.incognitoTabCreateBatchSize === 20) {
+      currentSettings.incognitoTabCreateBatchSize = 5;
+      shouldSave = true;
+    }
+    migrations.incognitoTabBatchSize5 = true;
+  }
+  if (shouldSave || !response.SettingsMigrations)
+    await browser.storage.local.set({
+      Settings: currentSettings,
+      SettingsMigrations: migrations
+    });
 };
 
 export const setSettings = async (id, value) => {
