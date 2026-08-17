@@ -39,9 +39,9 @@ export const initSettings = async () => {
   if (!migrations.incognitoTabBatchSize5) {
     if (currentSettings.incognitoTabCreateBatchSize === 20) {
       currentSettings.incognitoTabCreateBatchSize = 5;
-      shouldSave = true;
     }
     migrations.incognitoTabBatchSize5 = true;
+    shouldSave = true;
   }
   if (shouldSave || !response.SettingsMigrations)
     await browser.storage.local.set({
