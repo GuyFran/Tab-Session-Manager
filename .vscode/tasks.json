@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build extension (dev, watch)",
+      "type": "npm",
+      "script": "watch-dev",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "webpack",
+        "pattern": {
+          "regexp": "^ERROR in (.*)$",
+          "file": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*webpack.*compiling.*$",
+          "endsPattern": "^.*webpack.*compiled.*$"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "detail": "Builds unpacked extension to dev/chrome, watches and rebuilds on save. Load dev/chrome via chrome://extensions > Load unpacked."
+    }
+  ]
+}
