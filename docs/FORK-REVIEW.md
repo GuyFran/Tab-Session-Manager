@@ -41,23 +41,26 @@ Roughly 8.3k lines of JS/JSX across `src/background`, `src/popup`, `src/options`
 
 ---
 
-## 2. Build & tooling status (verified)
+## 2. Build & tooling status (current — verified 2026-08-17)
 
 | Check | Result |
 | --- | --- |
-| `npm install` | ✅ 634 packages, exit 0 |
-| `npm run build` | ✅ exit 0 — produced `dist/tab_session_manager-for-chrome-7.4.0.zip`, `…-for-firefox-7.4.0.zip`, `copiedSource-…zip` |
-| `npm audit` | ⚠️ 4 vulns (3 high, 1 moderate) — `brace-expansion`, `fast-uri`, `js-yaml`, `postcss`; all dev-only transitive, all fixable via `npm audit fix` |
-| `npm run format:check` | ❌ 7 files unformatted **on a clean upstream tree** (see B-07) |
+| `npm ci` | ✅ 634 packages, exit 0 |
+| Dev build (`webpack.config.dev.js`) | ✅ 0 errors, 26 warnings (all `moment` dynamic-locale requires, upstream) — produces `dev/chrome` + `dev/firefox` |
+| `npm run build` (dist zips) | not run since the toolchain was restored — not needed for local unpacked use (see section 4) |
+| `npm audit` | ⚠️ 5 vulnerabilities (1 moderate, 4 high) — dev-only transitive deps in the webpack toolchain, not yet triaged, nothing shipped/reachable at runtime |
+| `npm run format:check` | ❌ 7 files unformatted, all pre-existing upstream (see B-07, retired) |
 | Tests | ❌ none exist — no test runner, no test files |
 | CI | ❌ none — `.github/` has only FUNDING + issue templates |
 | Lint | ❌ none — Prettier only, no ESLint |
 
-Build warnings are size-only (popup bundle 785 KiB, background 528 KiB — no code splitting).
+Dev bundle sizes: popup 2.89 MiB, options 2.01 MiB, background 1.68 MiB, replaced 48 KiB,
+offscreen 43 KiB. Size-only, no code splitting; not a blocker for local unpacked use.
 
-**Note:** `src/credentials.js` did not exist and the build cannot resolve
-`background/cloudAuth.js` without it. A placeholder was created (empty strings, gitignored) purely
-to make the build run. **Drive sync will not work until real values are supplied** — see S-01.
+**Note:** `src/credentials.js` is gitignored and imported by `background/cloudAuth.js`; the build
+cannot resolve without it. A placeholder (empty `clientId`/`clientSecret`) is in place. If the
+working tree is ever reset from a fresh clone, recreate it before building — **Drive sync will not
+work with the placeholder** (see S-01, retired — sync is not used in this fork).
 
 ---
 
@@ -269,6 +272,16 @@ discarded incognito tab", so incognito windows now get the same load → capture
 recover their real titles. Discarded tabs in *normal* windows are deliberately excluded — those were
 suspended by the user or by Chrome's Memory Saver and are not ours to reload.
 
+**F-06 — Incognito restore flooding (v7.4.9)** (`src/background/open.js`). F-05's
+`discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier
+(`await Promise.all(openedTabs)`) only waited for `tabs.create` to return, not for the discard —
+restoring a large private session created every tab with its real URL and let hundreds of loads
+start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`,
+which makes the existing batch boundary meaningful: at most one batch's worth of tabs is briefly
+loading at a time. New setting `incognitoTabCreateBatchSize` (Options → Open, default 20, min 1)
+lets private-window batching be tuned independently of `tabCreateBatchSize`; `createTabs()` picks
+between the two via `isEnabledPlaceholder(currentWindow)`.
+
 **Known limits, by design:**
 - Only pages actually *viewed* get a thumbnail — background tabs can't be captured
   (`captureVisibleTab` is active-tab-only; that's a browser restriction, same for all suspender
@@ -288,12 +301,11 @@ suspended by the user or by Chrome's Memory Saver and are not ours to reload.
 
 ---
 
----
-
-## 6. Review log
+## 7. Review log
 
 | Date | Change |
 | --- | --- |
+| 2026-08-17 | **Documentation pass.** Added [`AGENTS.md`](../AGENTS.md) at repo root as the handoff doc for future AI agents (read order, hard constraints, build steps, current status, open backlog highlights). Cleansed this file: section 2 rewritten from the 2026-08-07 baseline (`npm install`/`dist` zips/7.4.0 bundle sizes) to the current, actually-verified state (`npm ci`, dev build, current bundle sizes, current `npm audit` count); fixed a duplicate `## 6.` heading (Review log is now section 7) and a stray doubled `---` separator; added an F-06 entry to section 6 documenting the v7.4.9 incognito-flooding fix, which previously only existed in the changelog below. No extension code changed, no version bump. |
 | 2026-08-17 | **Toolchain restored (E-01).** Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS` (24.x line; `engines` pins 24.13.0 but is not enforced — no `.npmrc`). `npm ci` → 634 packages. `npx webpack --config webpack.config.dev.js` compiles clean: **0 errors**, 26 warnings (all `moment` dynamic-locale requires, upstream). `dev/chrome` and `dev/firefox` produced; `dev/chrome/manifest.json` reports 7.4.9 with the `key` present, and both `discardAfterCreate` and `incognitoTabCreateBatchSize` are present in the emitted `background/background.js`. `npm run format:check` fails on 7 files (`autoSave.js`, `OptionsPage.js`, `PopupPage.js`, `SessionItem.js`, `replaced.js`, `defaultSettings.js`, `BACKERS.md`) — **all pre-existing upstream**, verified by checking the pre-7.4.9 blob against the project's own `.prettierrc`; no fork change introduced any of them. `npm audit` reports 5 vulnerabilities (1 moderate, 4 high) — dev-dependency chain, not yet triaged. |
 | 2026-08-16 | **v7.4.9** — F-06 incognito restore flooding. `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier (`await Promise.all`) only waited for `tabs.create` to return, not for the discard. Restoring a large private session created every tab with its real URL and let hundreds of loads start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`, which makes the existing batch boundary meaningful — at most one batch is briefly loading at a time. Added setting `incognitoTabCreateBatchSize` (default 20, min 1) so private-window batching can be tuned separately from `tabCreateBatchSize`; `createTabs()` picks between the two via `isEnabledPlaceholder(currentWindow)`. **Not built or run — Node absent (E-01).** |
 | 2026-08-16 | **v7.4.8** — F-05 incognito restore (see section 6). `open.js`: extracted `isEnabledPlaceholder()`, added `discardAfterCreate()` with one retry, and stopped substituting the `open_faild` placeholder in windows that cannot display it. `preloadSweep.js`: new `isSweepTarget()` covering discarded incognito tabs, per-window `processedTabIds` set so a re-suspended tab is not swept twice in one run, seeding count switched to the same predicate (fixes a badge that never reached zero), `replacePage()` now only called for actual placeholders, and the sweep body wrapped in `try/finally` so `isSweeping` cannot latch on. Also fixed a latent crash in `openTab()`'s fallback path where a failed second `tabs.create` fell through to `newTab.id`. **Not built or run — Node is absent from this machine (see below); code-level change only.** |
