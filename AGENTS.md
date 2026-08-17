@@ -69,17 +69,14 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-17)
 
-- Version **7.4.9**, pushed to `origin/master` (`a8a8ccc`).
+- Version **7.4.10**, dev build verified clean; pending commit and push.
 - Dev build verified clean: 0 errors, 26 pre-existing warnings.
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
   `"incognito": "spanning"`). Tabs are created live then immediately discarded, batched, with a
   dedicated `incognitoTabCreateBatchSize` setting. **Not yet runtime-tested in a real browser —
   that's the next thing to verify**, see `docs/FORK-REVIEW.md` section 5 backlog.
-- Open backlog highlights (full list + priorities in `docs/FORK-REVIEW.md` section 5):
-  - **P-01** — sweep-triggered auto-save thrash (one full session serialization per tab during a
-    post-restore sweep). Not yet fixed.
-  - **P-02** — manual sweep button gives no feedback when `ifLazyLoading` is off.
+- Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
   - **L-02** — backup export is off by default; user action, not code.
 
 ## Conventions already established

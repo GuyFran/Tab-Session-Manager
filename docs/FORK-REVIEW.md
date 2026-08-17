@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-17 at `ca016db`; current version **7.4.9**, dev build verified clean
+**Last reassessed:** 2026-08-17; current version **7.4.10**, dev build verified clean
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -211,9 +211,9 @@ and thumbnail display (user runs the app).
 | ID | Item | Priority | Status |
 | --- | --- | --- | --- |
 | E-01 | Restore Node toolchain | P0 | ✅ Done (2026-08-17) — Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS`; `npm ci` restored 634 packages; dev build clean. `src/credentials.js` placeholder recreated 2026-08-16. |
-| F-05 | Incognito restore uses discard-on-create; sweep covers discarded incognito tabs | P1 | ✅ Done (v7.4.8) — unbuilt, untested |
-| P-01 | Sweep thrashes auto-save: each swept tab fires `tabs.onUpdated`(complete) → `setUpdateTempTimer` → a full temp-session rewrite. On a mass restore that is one whole-profile serialisation per tab, in the exact scenario the sweep exists to make bearable. Suppress `setUpdateTempTimer` while `isSweeping`. | P1 | ☐ Open |
-| P-02 | Header sweep button is always enabled, but `startPreloadSweep` returns silently when `ifLazyLoading` is off — click does nothing, no feedback | P3 | ☐ Open |
+| F-05 | Incognito restore uses discard-on-create; sweep covers discarded incognito tabs | P1 | ✅ Done (v7.4.8) — runtime test still pending |
+| P-01 | Sweep thrashes auto-save: each swept tab fires `tabs.onUpdated`(complete) → `setUpdateTempTimer` → a full temp-session rewrite. On a mass restore that is one whole-profile serialisation per tab, in the exact scenario the sweep exists to make bearable. | P1 | ✅ Done (v7.4.10) — `setUpdateTempTimer` returns while a sweep is active. |
+| P-02 | Header sweep button is always enabled, but `startPreloadSweep` returns silently when `ifLazyLoading` is off — click does nothing, no feedback | P3 | ✅ Done (v7.4.10) — control is disabled and labelled with the lazy-loading setting when unavailable. |
 | L-01 | Pin extension ID via `key` in `src/manifest.json` | P1 | ✅ Done (v7.4.1) — stable ID `pheckpgfalekjmbbodbggfohpghjceog`; private key in gitignored `extension-key.pem` |
 | L-02 | Enable backup export in Options if real sessions are stored | P1 | ☐ **User action** — Options → Backup, once the extension is loaded |
 | B-04 | Fix `session?.tabGroups?.some(...)` in `controlSessions.js:232` | P2 | ✅ Done (v7.4.1) |
@@ -305,6 +305,7 @@ between the two via `isEnabledPlaceholder(currentWindow)`.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-17 | **v7.4.10** — P-01/P-02. `autoSave.js` now ignores temp-session scheduling while `preloadSweep.js` reports an active sweep, preventing one whole-profile serialization per swept tab. The popup sweep control is disabled (and titled "Tab lazy loading") if lazy loading is off, so it no longer offers an action the background silently rejects. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Real-Chrome testing of F-05/F-06 could not be run in this environment because Chrome is not connected to the desktop automation bridge; runtime verification remains pending. |
 | 2026-08-17 | **Documentation pass.** Added [`AGENTS.md`](../AGENTS.md) at repo root as the handoff doc for future AI agents (read order, hard constraints, build steps, current status, open backlog highlights). Cleansed this file: section 2 rewritten from the 2026-08-07 baseline (`npm install`/`dist` zips/7.4.0 bundle sizes) to the current, actually-verified state (`npm ci`, dev build, current bundle sizes, current `npm audit` count); fixed a duplicate `## 6.` heading (Review log is now section 7) and a stray doubled `---` separator; added an F-06 entry to section 6 documenting the v7.4.9 incognito-flooding fix, which previously only existed in the changelog below. No extension code changed, no version bump. |
 | 2026-08-17 | **Toolchain restored (E-01).** Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS` (24.x line; `engines` pins 24.13.0 but is not enforced — no `.npmrc`). `npm ci` → 634 packages. `npx webpack --config webpack.config.dev.js` compiles clean: **0 errors**, 26 warnings (all `moment` dynamic-locale requires, upstream). `dev/chrome` and `dev/firefox` produced; `dev/chrome/manifest.json` reports 7.4.9 with the `key` present, and both `discardAfterCreate` and `incognitoTabCreateBatchSize` are present in the emitted `background/background.js`. `npm run format:check` fails on 7 files (`autoSave.js`, `OptionsPage.js`, `PopupPage.js`, `SessionItem.js`, `replaced.js`, `defaultSettings.js`, `BACKERS.md`) — **all pre-existing upstream**, verified by checking the pre-7.4.9 blob against the project's own `.prettierrc`; no fork change introduced any of them. `npm audit` reports 5 vulnerabilities (1 moderate, 4 high) — dev-dependency chain, not yet triaged. |
 | 2026-08-16 | **v7.4.9** — F-06 incognito restore flooding. `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier (`await Promise.all`) only waited for `tabs.create` to return, not for the discard. Restoring a large private session created every tab with its real URL and let hundreds of loads start before any discard landed. Both call sites in `openTab()` now `await discardAfterCreate()`, which makes the existing batch boundary meaningful — at most one batch is briefly loading at a time. Added setting `incognitoTabCreateBatchSize` (default 20, min 1) so private-window batching can be tuned separately from `tabCreateBatchSize`; `createTabs()` picks between the two via `isEnabledPlaceholder(currentWindow)`. **Not built or run — Node absent (E-01).** |

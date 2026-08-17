@@ -70,6 +70,7 @@ export default props => {
   };
 
   const shouldShowCloudSync = getSettings("signedInEmail");
+  const isLazyLoadingEnabled = getSettings("ifLazyLoading");
   const syncError = syncStatus.status === "signInRequired";
 
   return (
@@ -95,10 +96,17 @@ export default props => {
         </button>
         <div className="separation" />
         <button
-          className={`sweepButton ${sweepStatus.isSweeping ? "sweeping" : ""}`}
+          className={`sweepButton ${
+            sweepStatus.isSweeping ? "sweeping" : isLazyLoadingEnabled ? "" : "disable"
+          }`}
           onClick={handleSweepClick}
+          disabled={!isLazyLoadingEnabled}
           title={browser.i18n.getMessage(
-            sweepStatus.isSweeping ? "stopPreloadSweepLabel" : "startPreloadSweepLabel"
+            sweepStatus.isSweeping
+              ? "stopPreloadSweepLabel"
+              : isLazyLoadingEnabled
+                ? "startPreloadSweepLabel"
+                : "ifLazyLoadingLabel"
           )}
         >
           <UpdateIcon />

@@ -7,6 +7,7 @@ import { loadCurrentSession, saveSession, removeSession } from "./save.js";
 import { getSettings } from "src/settings/settings";
 import { getTrackingInfo, updateTrackingSession } from "./track.js";
 import { init } from "./background.js";
+import { isPreloadSweeping } from "./preloadSweep.js";
 
 const logDir = "background/autoSave";
 
@@ -78,6 +79,9 @@ const updateTemp = async () => {
 let updateTempTimer;
 export const setUpdateTempTimer = async () => {
   await init();
+  // A preload sweep deliberately completes one tab at a time. Saving the whole
+  // profile after every completion defeats that throttling on large restores.
+  if (isPreloadSweeping()) return;
   const { isTracking } = await getTrackingInfo();
   if (
     !getSettings("ifAutoSaveWhenClose") &&

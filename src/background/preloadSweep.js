@@ -16,6 +16,8 @@ let isSweeping = false;
 let shouldStop = false;
 let remainingCount = 0;
 
+export const isPreloadSweeping = () => isSweeping;
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export const getPreloadSweepStatus = () => ({
