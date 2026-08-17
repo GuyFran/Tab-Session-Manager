@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-18; current version **7.4.13**, dev build verified clean
+**Last reassessed:** 2026-08-18; current version **7.4.14**, dev build verified clean
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -305,6 +305,7 @@ between the two via `isEnabledPlaceholder(currentWindow)`.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-18 | **v7.4.14** — Added automatic private-restore tracing. A restore involving an incognito window downloads `TabSessionManager/restore-trace-<timestamp>.log` when it finishes or errors; it records runtime version/extension ID, saved-window routing, effective batch values, per-tab create/discard results, batch waits, and errors, without page URLs. This is intended to diagnose reports of tabs leaking into the popup window and batches not waiting. Dev build emitted both manifests at 7.4.14 and contains the trace module; 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-18 | **v7.4.13** — Corrected the v7.4.12 private-batch migration so its completion marker is saved even when the user already chose a value other than the former default of 20. This preserves that choice and prevents repeated migration checks. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-18 | **v7.4.12** — Incognito restore routing and batching. A saved private window now always opens in a new private Chrome window, even when the popup's default action is “open in current window”; it cannot leak into the regular popup window. Newly created windows are explicitly re-read with `populate: true` before their initial tab is used. `createTabs()` now awaits the final partial batch before moving to another window or starting the sweep. Existing profiles whose persisted private batch setting was the old default of 20 are migrated once to 5; subsequent user-selected values remain untouched. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Runtime verification remains pending. |
 | 2026-08-17 | **v7.4.11** — Lowered the configurable `incognitoTabCreateBatchSize` default and invalid/missing-value fallback from 20 to 5, reducing concurrent brief real-URL loads during a private-window restore. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |

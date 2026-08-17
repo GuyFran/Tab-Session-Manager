@@ -6,21 +6,33 @@ import { returnReplaceURL, replacePage } from "./replace.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { startPreloadSweep } from "./preloadSweep.js";
+import { createRestoreTrace } from "./restoreTrace.js";
 
 const logDir = "background/open";
 
 export async function openSession(session, property = "openInNewWindow") {
   log.log(logDir, "openSession()", session, property);
+  const hasIncognitoWindow = Object.values(session.windows).some(tabs =>
+    Object.values(tabs).some(tab => tab.incognito)
+  );
+  const trace = hasIncognitoWindow ? createRestoreTrace(session, property) : null;
   let isFirstWindowFlag = true;
   let restoredWindowIds = [];
   tabList = {};
-  for (let win in session.windows) {
+  try {
+    for (let win in session.windows) {
     const isIncognitoWindow = Object.values(session.windows[win]).some(tab => tab.incognito);
+    trace?.add("saved-window", { windowId: win, incognito: isIncognitoWindow });
     const openInCurrentWindow = async () => {
       log.log(logDir, "openSession() openInCurrentWindow()");
       const currentWindow = await removeNowOpenTabs();
       restoredWindowIds.push(currentWindow.id);
-      await createTabs(session, win, currentWindow);
+      trace?.add("window-current", {
+        savedWindowId: win,
+        windowId: currentWindow.id,
+        incognito: currentWindow.incognito
+      });
+      await createTabs(session, win, currentWindow, false, trace);
     };
     const openInNewWindow = async () => {
       log.log(logDir, "openSession() openInNewWindow()");
@@ -70,13 +82,19 @@ export async function openSession(session, property = "openInNewWindow") {
       // windows.create() does not guarantee a populated tabs array. Fetch the
       // new window explicitly before selecting/removing its initial tab.
       currentWindow = await browser.windows.get(currentWindow.id, { populate: true });
+      trace?.add("window-created", {
+        savedWindowId: win,
+        windowId: currentWindow.id,
+        incognito: currentWindow.incognito,
+        initialTabCount: currentWindow.tabs?.length || 0
+      });
 
       if (isSetPosition && session.windowsInfo[win].state == "maximized") {
         browser.windows.update(currentWindow.id, { state: "maximized" });
       }
 
       restoredWindowIds.push(currentWindow.id);
-      await createTabs(session, win, currentWindow);
+      await createTabs(session, win, currentWindow, false, trace);
     };
     const addToCurrentWindow = async () => {
       log.log(logDir, "openSession() addToCurrentWindow()");
@@ -84,7 +102,12 @@ export async function openSession(session, property = "openInNewWindow") {
       const currentWinId = currentTabs[0].windowId;
       const currentWindow = await browser.windows.get(currentWinId, { populate: true });
       restoredWindowIds.push(currentWindow.id);
-      await createTabs(session, win, currentWindow, true);
+      trace?.add("window-add-current", {
+        savedWindowId: win,
+        windowId: currentWindow.id,
+        incognito: currentWindow.incognito
+      });
+      await createTabs(session, win, currentWindow, true, trace);
     };
 
     if (isFirstWindowFlag) {
@@ -92,6 +115,7 @@ export async function openSession(session, property = "openInNewWindow") {
       // A saved private window must never be restored into the regular window
       // that hosts the popup, even if that is the user's default open action.
       if (isIncognitoWindow && property !== "openInNewWindow") {
+        trace?.add("private-window-forced-new", { savedWindowId: win, property: property });
         await openInNewWindow();
         continue;
       }
@@ -110,10 +134,17 @@ export async function openSession(session, property = "openInNewWindow") {
       // ウィンドウを並列に開くとタブ作成のバッチ制限が効かないため、順次開く
       await openInNewWindow();
     }
-  }
+    }
 
-  // 復元完了後、バックグラウンドで各タブを順次ロードしてサムネイルを取得し、サスペンドする
-  if (getSettings("ifPreloadAfterRestore")) startPreloadSweep(restoredWindowIds);
+    // 復元完了後、バックグラウンドで各タブを順次ロードしてサムネイルを取得し、サスペンドする
+    if (getSettings("ifPreloadAfterRestore")) startPreloadSweep(restoredWindowIds);
+    trace?.add("restore-finished", { restoredWindowIds: restoredWindowIds });
+  } catch (e) {
+    trace?.add("restore-error", { message: e?.message || String(e) });
+    throw e;
+  } finally {
+    await trace?.download();
+  }
 }
 
 const isEnabledOpenerTabId =
@@ -131,20 +162,25 @@ const DISCARD_RETRY_DELAY_MS = 500;
 
 // placeholderの代わりに生成直後のタブをdiscardして、読み込みを止める
 // 生成直後は破棄できないことがあるため、失敗したら一度だけ再試行する
-const discardAfterCreate = async tabId => {
+const discardAfterCreate = async (tabId, trace = null) => {
   const tryDiscard = async () => {
     try {
       await browser.tabs.discard(tabId);
-      return true;
+      const discardedTab = await browser.tabs.get(tabId);
+      trace?.add("tab-discard-result", { tabId: tabId, discarded: discardedTab.discarded });
+      return discardedTab.discarded;
     } catch (e) {
+      trace?.add("tab-discard-error", { tabId: tabId, message: e?.message || String(e) });
       return false;
     }
   };
 
   if (await tryDiscard()) return;
+  trace?.add("tab-discard-retry", { tabId: tabId, delayMs: DISCARD_RETRY_DELAY_MS });
   await new Promise(resolve => setTimeout(resolve, DISCARD_RETRY_DELAY_MS));
   if (await tryDiscard()) return;
   log.warn(logDir, "discardAfterCreate() failed", tabId);
+  trace?.add("tab-discard-failed", { tabId: tabId });
 };
 
 //ウィンドウとタブを閉じてcurrentWindowを返す
@@ -216,7 +252,7 @@ const setWindowTitle = (session, windowId, currentWindow) => {
 };
 
 //現在のウィンドウにタブを生成
-async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = false) {
+async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = false, trace = null) {
   log.log(logDir, "createTabs()", session, win, currentWindow, isAddtoCurrentWindow);
   let sortedTabs = [];
 
@@ -239,19 +275,44 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
     : getSettings("incognitoTabCreateBatchSize");
   const defaultBatchSize = isEnabledPlaceholder(currentWindow) ? 20 : 5;
   const TAB_CREATE_BATCH_SIZE = Math.max(1, Number(batchSizeSetting) || defaultBatchSize);
+  trace?.add("tab-batching", {
+    windowId: currentWindow.id,
+    incognito: currentWindow.incognito,
+    lazyLoading: getSettings("ifLazyLoading"),
+    configuredBatchSize: batchSizeSetting,
+    effectiveBatchSize: TAB_CREATE_BATCH_SIZE,
+    tabCount: sortedTabs.length
+  });
   let openedTabs = [];
   let tabNumber = 0;
   for (let tab of sortedTabs) {
-    const openedTab = openTab(tab, currentWindow, isAddtoCurrentWindow)
+    trace?.add("tab-create-start", {
+      windowId: currentWindow.id,
+      savedTabId: tab.id,
+      active: tab.active,
+      batch: Math.floor(openedTabs.length / TAB_CREATE_BATCH_SIZE) + 1
+    });
+    const openedTab = openTab(tab, currentWindow, isAddtoCurrentWindow, trace)
       .then(() => {
         tabNumber++;
+        trace?.add("tab-create-finished", { windowId: currentWindow.id, savedTabId: tab.id });
         if (tabNumber == 1 && !isAddtoCurrentWindow) browser.tabs.remove(firstTabId);
         if (tabNumber == sortedTabs.length) replacePage(currentWindow.id);
       })
-      .catch(() => {});
+      .catch(e => {
+        trace?.add("tab-create-error", {
+          windowId: currentWindow.id,
+          savedTabId: tab.id,
+          message: e?.message || String(e)
+        });
+      });
     openedTabs.push(openedTab);
     if (getSettings("ifSupportTst")) await openedTab;
-    else if (openedTabs.length % TAB_CREATE_BATCH_SIZE === 0) await Promise.all(openedTabs);
+    else if (openedTabs.length % TAB_CREATE_BATCH_SIZE === 0) {
+      trace?.add("batch-wait-start", { windowId: currentWindow.id, size: TAB_CREATE_BATCH_SIZE });
+      await Promise.all(openedTabs);
+      trace?.add("batch-wait-finished", { windowId: currentWindow.id, size: TAB_CREATE_BATCH_SIZE });
+    }
   }
 
   // Await the final partial batch before opening another saved window or
@@ -273,7 +334,7 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
 
 let tabList = {};
 //実際にタブを開く
-function openTab(tab, currentWindow, isOpenToLastIndex = false) {
+function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
   log.log(logDir, "openTab()", tab, currentWindow, isOpenToLastIndex);
   return new Promise(async function (resolve, reject) {
     let createOption = {
@@ -341,10 +402,11 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false) {
       log.log(logDir, "openTab() tryOpen()");
       try {
         const newTab = await browser.tabs.create(createOption);
+        trace?.add("tab-created", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
         // discardを待ってからresolveする。待たないとバッチの区切りが効かず、
         // discardが走る前に次のバッチが作られて大量のタブが同時に読み込まれる
-        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id);
+        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id, trace);
         resolve();
       } catch (e) {
         log.warn(logDir, "openTab() tryOpen() replace", e);
@@ -357,8 +419,9 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false) {
           log.error(logDir, "openTab() tryOpen() create", e);
         });
         if (!newTab) return reject(); //タブを開けなかった場合はreject
+        trace?.add("tab-created-fallback", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
-        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id);
+        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id, trace);
         resolve();
       }
     };
