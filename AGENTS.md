@@ -69,7 +69,7 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-17)
 
-- Version **7.4.14**, dev build verified clean; pending commit and push.
+- Version **7.4.14**, pushed to `origin/master` (`db2d982`); dev build verified clean.
 - Dev build verified clean: 0 errors, 26 pre-existing warnings.
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
