@@ -69,17 +69,19 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-17)
 
-- Version **7.4.14**, pushed to `origin/master` (`db2d982`); dev build verified clean.
+- Version **7.4.15**, pending commit and push; dev build verified clean.
 - Dev build verified clean: 0 errors, 26 pre-existing warnings.
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
   `"incognito": "spanning"`). Tabs are created live then immediately discarded, batched, with a
-  dedicated `incognitoTabCreateBatchSize` setting (default 5). v7.4.12 also forces saved private
-  windows into a new private window, rather than the popup's regular window, and waits for the
-  final create batch. **Not yet runtime-tested in a real browser —
+  dedicated `incognitoTabCreateBatchSize` setting (default 5). v7.4.15 routes an entire saved
+  session to new windows when any saved window is private, so a mixed session cannot partly
+  restore into the popup's regular window. **Not yet runtime-tested in a real browser —
   that's the next thing to verify**, see `docs/FORK-REVIEW.md` section 5 backlog.
-- Current diagnostic: v7.4.14 writes a `restore-trace-*.log` download for every restore involving
-  a private window. Its first line identifies the actual runtime manifest version and extension ID.
+- Current diagnostic: v7.4.15 writes live `restore-trace-*.log` snapshots before tab work, when a
+  window is selected/created, and at each batch barrier, as well as a final file. The first line
+  identifies the actual runtime manifest version and extension ID; a stopped restore still leaves
+  its earlier snapshots.
 - Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
   - **L-02** — backup export is off by default; user action, not code.
 

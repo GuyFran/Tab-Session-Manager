@@ -16,6 +16,18 @@ export async function openSession(session, property = "openInNewWindow") {
     Object.values(tabs).some(tab => tab.incognito)
   );
   const trace = hasIncognitoWindow ? createRestoreTrace(session, property) : null;
+  // The popup's current window must never receive part of a mixed private
+  // session. When any saved window is private, restore every saved window into
+  // its own window instead.
+  const restoreProperty = hasIncognitoWindow ? "openInNewWindow" : property;
+  trace?.add("restore-routing", {
+    requestedProperty: property,
+    effectiveProperty: restoreProperty,
+    containsPrivateWindow: hasIncognitoWindow
+  });
+  // Write an identifiable trace before any tab/window work, so it survives an
+  // aborted restore.
+  await trace?.snapshot("start");
   let isFirstWindowFlag = true;
   let restoredWindowIds = [];
   tabList = {};
@@ -32,6 +44,7 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
+      await trace?.snapshot("window-current");
       await createTabs(session, win, currentWindow, false, trace);
     };
     const openInNewWindow = async () => {
@@ -88,6 +101,7 @@ export async function openSession(session, property = "openInNewWindow") {
         incognito: currentWindow.incognito,
         initialTabCount: currentWindow.tabs?.length || 0
       });
+      await trace?.snapshot("window-created");
 
       if (isSetPosition && session.windowsInfo[win].state == "maximized") {
         browser.windows.update(currentWindow.id, { state: "maximized" });
@@ -107,19 +121,19 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
+      await trace?.snapshot("window-add-current");
       await createTabs(session, win, currentWindow, true, trace);
     };
 
     if (isFirstWindowFlag) {
       isFirstWindowFlag = false;
-      // A saved private window must never be restored into the regular window
-      // that hosts the popup, even if that is the user's default open action.
+      // Record the reason for the effective routing in the live trace. The
+      // switch below uses restoreProperty for every saved window in the session.
       if (isIncognitoWindow && property !== "openInNewWindow") {
         trace?.add("private-window-forced-new", { savedWindowId: win, property: property });
-        await openInNewWindow();
-        continue;
+        await trace?.snapshot("private-window-forced-new");
       }
-      switch (property) {
+      switch (restoreProperty) {
         case "openInCurrentWindow":
           await openInCurrentWindow();
           break;
@@ -141,6 +155,7 @@ export async function openSession(session, property = "openInNewWindow") {
     trace?.add("restore-finished", { restoredWindowIds: restoredWindowIds });
   } catch (e) {
     trace?.add("restore-error", { message: e?.message || String(e) });
+    await trace?.snapshot("error");
     throw e;
   } finally {
     await trace?.download();
@@ -285,12 +300,34 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   });
   let openedTabs = [];
   let tabNumber = 0;
+  let batchNumber = 1;
+  const waitForBatch = async isFinalBatch => {
+    if (openedTabs.length === 0) return;
+    const batchSize = openedTabs.length;
+    trace?.add("batch-wait-start", {
+      windowId: currentWindow.id,
+      batch: batchNumber,
+      size: batchSize,
+      final: isFinalBatch
+    });
+    await trace?.snapshot("batch-wait-start");
+    await Promise.all(openedTabs);
+    trace?.add("batch-wait-finished", {
+      windowId: currentWindow.id,
+      batch: batchNumber,
+      size: batchSize,
+      final: isFinalBatch
+    });
+    await trace?.snapshot("batch-wait-finished");
+    openedTabs = [];
+    batchNumber++;
+  };
   for (let tab of sortedTabs) {
     trace?.add("tab-create-start", {
       windowId: currentWindow.id,
       savedTabId: tab.id,
       active: tab.active,
-      batch: Math.floor(openedTabs.length / TAB_CREATE_BATCH_SIZE) + 1
+      batch: batchNumber
     });
     const openedTab = openTab(tab, currentWindow, isAddtoCurrentWindow, trace)
       .then(() => {
@@ -308,16 +345,12 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
       });
     openedTabs.push(openedTab);
     if (getSettings("ifSupportTst")) await openedTab;
-    else if (openedTabs.length % TAB_CREATE_BATCH_SIZE === 0) {
-      trace?.add("batch-wait-start", { windowId: currentWindow.id, size: TAB_CREATE_BATCH_SIZE });
-      await Promise.all(openedTabs);
-      trace?.add("batch-wait-finished", { windowId: currentWindow.id, size: TAB_CREATE_BATCH_SIZE });
-    }
+    if (openedTabs.length === TAB_CREATE_BATCH_SIZE) await waitForBatch(false);
   }
 
   // Await the final partial batch before opening another saved window or
   // starting the sweep; otherwise those tabs can all remain in flight.
-  await Promise.all(openedTabs);
+  await waitForBatch(true);
 
   if (isEnabledTabGroups && getSettings("saveTabGroupsV2")) {
     createTabGroups(currentWindow.id, sortedTabs, session.tabGroups || []);

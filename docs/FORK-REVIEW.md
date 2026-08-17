@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-18; current version **7.4.14**, dev build verified clean
+**Last reassessed:** 2026-08-18; current version **7.4.15**, dev build verified clean; runtime verification pending
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -272,7 +272,7 @@ discarded incognito tab", so incognito windows now get the same load → capture
 recover their real titles. Discarded tabs in *normal* windows are deliberately excluded — those were
 suspended by the user or by Chrome's Memory Saver and are not ours to reload.
 
-**F-06 — Incognito restore flooding (v7.4.9)** (`src/background/open.js`). F-05's
+**F-06 — Incognito restore flooding (v7.4.9, v7.4.15)** (`src/background/open.js`). F-05's
 `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier
 (`await Promise.all(openedTabs)`) only waited for `tabs.create` to return, not for the discard —
 restoring a large private session created every tab with its real URL and let hundreds of loads
@@ -281,6 +281,12 @@ which makes the existing batch boundary meaningful: at most one batch's worth of
 loading at a time. New setting `incognitoTabCreateBatchSize` (Options → Open, default 5, min 1)
 lets private-window batching be tuned independently of `tabCreateBatchSize`; `createTabs()` picks
 between the two via `isEnabledPlaceholder(currentWindow)`.
+
+v7.4.15 makes each batch an isolated promise list: it waits for and clears one batch before
+starting the next, including the final partial batch. It also treats a saved session containing
+any private window as an all-new-window restore. This prevents a leading normal saved window in a
+mixed session from being restored into the popup's regular window before a later private window is
+opened.
 
 **Known limits, by design:**
 - Only pages actually *viewed* get a thumbnail — background tabs can't be captured
@@ -305,6 +311,7 @@ between the two via `isEnabledPlaceholder(currentWindow)`.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-18 | **v7.4.15** — Private-restore routing and live diagnostics. If a saved session contains any private window, every saved window now restores through `openInNewWindow`, preventing a mixed session's leading normal window from going into the popup's current regular window. Reworked the tab batch barrier to wait for and clear each batch (including the final partial batch) before launching another. The private-restore trace now downloads snapshots at startup, window routing/creation, and before/after every batch wait, so it is available even if the restore is stopped. The startup snapshot records the runtime version and stable extension ID for proof that the loaded code is current. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.14** — Added automatic private-restore tracing. A restore involving an incognito window downloads `TabSessionManager/restore-trace-<timestamp>.log` when it finishes or errors; it records runtime version/extension ID, saved-window routing, effective batch values, per-tab create/discard results, batch waits, and errors, without page URLs. This is intended to diagnose reports of tabs leaking into the popup window and batches not waiting. Dev build emitted both manifests at 7.4.14 and contains the trace module; 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-18 | **v7.4.13** — Corrected the v7.4.12 private-batch migration so its completion marker is saved even when the user already chose a value other than the former default of 20. This preserves that choice and prevents repeated migration checks. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-18 | **v7.4.12** — Incognito restore routing and batching. A saved private window now always opens in a new private Chrome window, even when the popup's default action is “open in current window”; it cannot leak into the regular popup window. Newly created windows are explicitly re-read with `populate: true` before their initial tab is used. `createTabs()` now awaits the final partial batch before moving to another window or starting the sweep. Existing profiles whose persisted private batch setting was the old default of 20 are migrated once to 5; subsequent user-selected values remain untouched. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. Runtime verification remains pending. |
