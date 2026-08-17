@@ -6,8 +6,6 @@ const timestampForFileName = () => new Date().toISOString().replace(/[:.]/g, "-"
 
 export const createRestoreTrace = (session, property) => {
   const entries = [];
-  const traceTimestamp = timestampForFileName();
-  let snapshotNumber = 0;
   const add = (event, details = {}) => {
     if (entries.length >= MAX_ENTRIES) return;
     entries.push(
@@ -33,25 +31,19 @@ export const createRestoreTrace = (session, property) => {
     windows: windowSummary
   });
 
-  const snapshot = async label => {
-    snapshotNumber++;
-    const url = `data:text/plain;charset=utf-8,${encodeURIComponent(entries.join("\n"))}`;
-    try {
-      await browser.downloads.download({
-        url: url,
-        filename: `TabSessionManager/restore-trace-${traceTimestamp}-${snapshotNumber}-${label}.log`,
-        conflictAction: "uniquify",
-        saveAs: false
-      });
-    } catch (e) {}
-  };
-
   return {
     add,
-    snapshot,
     download: async () => {
       add("restore-trace-complete");
-      await snapshot("final");
+      const url = `data:text/plain;charset=utf-8,${encodeURIComponent(entries.join("\n"))}`;
+      try {
+        await browser.downloads.download({
+          url: url,
+          filename: `TabSessionManager/restore-trace-${timestampForFileName()}.log`,
+          conflictAction: "uniquify",
+          saveAs: false
+        });
+      } catch (e) {}
     }
   };
 };

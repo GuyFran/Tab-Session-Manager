@@ -25,9 +25,6 @@ export async function openSession(session, property = "openInNewWindow") {
     effectiveProperty: restoreProperty,
     containsPrivateWindow: hasIncognitoWindow
   });
-  // Write an identifiable trace before any tab/window work, so it survives an
-  // aborted restore.
-  await trace?.snapshot("start");
   let isFirstWindowFlag = true;
   let restoredWindowIds = [];
   tabList = {};
@@ -44,7 +41,6 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
-      await trace?.snapshot("window-current");
       await createTabs(session, win, currentWindow, false, trace);
     };
     const openInNewWindow = async () => {
@@ -101,7 +97,6 @@ export async function openSession(session, property = "openInNewWindow") {
         incognito: currentWindow.incognito,
         initialTabCount: currentWindow.tabs?.length || 0
       });
-      await trace?.snapshot("window-created");
 
       if (isSetPosition && session.windowsInfo[win].state == "maximized") {
         browser.windows.update(currentWindow.id, { state: "maximized" });
@@ -121,7 +116,6 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
-      await trace?.snapshot("window-add-current");
       await createTabs(session, win, currentWindow, true, trace);
     };
 
@@ -131,7 +125,6 @@ export async function openSession(session, property = "openInNewWindow") {
       // switch below uses restoreProperty for every saved window in the session.
       if (isIncognitoWindow && property !== "openInNewWindow") {
         trace?.add("private-window-forced-new", { savedWindowId: win, property: property });
-        await trace?.snapshot("private-window-forced-new");
       }
       switch (restoreProperty) {
         case "openInCurrentWindow":
@@ -155,7 +148,6 @@ export async function openSession(session, property = "openInNewWindow") {
     trace?.add("restore-finished", { restoredWindowIds: restoredWindowIds });
   } catch (e) {
     trace?.add("restore-error", { message: e?.message || String(e) });
-    await trace?.snapshot("error");
     throw e;
   } finally {
     await trace?.download();
@@ -180,10 +172,12 @@ const DISCARD_RETRY_DELAY_MS = 500;
 const discardAfterCreate = async (tabId, trace = null) => {
   const tryDiscard = async () => {
     try {
-      await browser.tabs.discard(tabId);
-      const discardedTab = await browser.tabs.get(tabId);
-      trace?.add("tab-discard-result", { tabId: tabId, discarded: discardedTab.discarded });
-      return discardedTab.discarded;
+      // Chrome resolves discard() with the updated tab. Querying the tab again
+      // can fail for an incognito tab even when discard itself succeeded.
+      const discardedTab = await browser.tabs.discard(tabId);
+      const discarded = Boolean(discardedTab?.discarded);
+      trace?.add("tab-discard-result", { tabId: tabId, discarded: discarded });
+      return discarded;
     } catch (e) {
       trace?.add("tab-discard-error", { tabId: tabId, message: e?.message || String(e) });
       return false;
@@ -310,7 +304,6 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
       size: batchSize,
       final: isFinalBatch
     });
-    await trace?.snapshot("batch-wait-start");
     await Promise.all(openedTabs);
     trace?.add("batch-wait-finished", {
       windowId: currentWindow.id,
@@ -318,7 +311,6 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
       size: batchSize,
       final: isFinalBatch
     });
-    await trace?.snapshot("batch-wait-finished");
     openedTabs = [];
     batchNumber++;
   };
@@ -448,10 +440,12 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         // placeholderを開けないウィンドウでは代替ページを出せないので、元のURLのまま再試行する
         else if (isEnabledPlaceholder(currentWindow))
           createOption.url = returnReplaceURL("open_faild", tab.title, tab.url, tab.favIconUrl);
+        let fallbackError;
         const newTab = await browser.tabs.create(createOption).catch(e => {
+          fallbackError = e;
           log.error(logDir, "openTab() tryOpen() create", e);
         });
-        if (!newTab) return reject(); //タブを開けなかった場合はreject
+        if (!newTab) return reject(fallbackError); //タブを開けなかった場合はreject
         trace?.add("tab-created-fallback", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
         if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id, trace);

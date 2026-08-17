@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-18; current version **7.4.15**, dev build verified clean; runtime verification pending
+**Last reassessed:** 2026-08-18; current version **7.4.16**, dev build verified clean; runtime verification pending
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -260,7 +260,7 @@ original active tab of each window is re-activated at the end. End state per tab
 title, stored thumbnail, natively suspended. Message handlers `startPreloadSweep` (all normal
 windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trigger.
 
-**F-05 — Incognito restore (v7.4.8)** (`src/background/open.js`, `src/background/preloadSweep.js`).
+**F-05 — Incognito restore (v7.4.8, v7.4.16)** (`src/background/open.js`, `src/background/preloadSweep.js`).
 Chrome refuses to load extension pages in incognito windows under `"incognito": "spanning"`, so the
 lazy-loading placeholder was skipped there (upstream `open.js`) and every restored incognito tab
 loaded its real URL immediately — F-01/F-04 did nothing and a large incognito session loaded in full.
@@ -271,6 +271,10 @@ predicate widened from "is a redirect placeholder" to "is a redirect placeholder
 discarded incognito tab", so incognito windows now get the same load → capture → re-suspend pass and
 recover their real titles. Discarded tabs in *normal* windows are deliberately excluded — those were
 suspended by the user or by Chrome's Memory Saver and are not ours to reload.
+
+v7.4.16 uses the `Tab` returned directly by Chrome's `tabs.discard()` call to determine success.
+The former extra `tabs.get()` verification can reject for freshly discarded private tabs despite a
+successful discard, causing an unnecessary retry and falsely reporting failure.
 
 **F-06 — Incognito restore flooding (v7.4.9, v7.4.15)** (`src/background/open.js`). F-05's
 `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier
@@ -311,6 +315,7 @@ opened.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-18 | **v7.4.16** — Corrected private-restore diagnostics and discard verification after a real Chrome v7.4.15 run. Its 226-tab private session correctly used batch size 5 but created 95 cumulative trace downloads (start/window plus before/after each of 46 batches); v7.4.16 restores a single finish/error trace download. The trace showed that `tabs.discard()` was followed by a failing `tabs.get()` (`No tab with id`); Chrome returns the discarded `Tab` directly, so the second lookup was removed. Fallback tab-creation errors are now preserved in the trace instead of becoming `undefined`. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.15** — Private-restore routing and live diagnostics. If a saved session contains any private window, every saved window now restores through `openInNewWindow`, preventing a mixed session's leading normal window from going into the popup's current regular window. Reworked the tab batch barrier to wait for and clear each batch (including the final partial batch) before launching another. The private-restore trace now downloads snapshots at startup, window routing/creation, and before/after every batch wait, so it is available even if the restore is stopped. The startup snapshot records the runtime version and stable extension ID for proof that the loaded code is current. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.14** — Added automatic private-restore tracing. A restore involving an incognito window downloads `TabSessionManager/restore-trace-<timestamp>.log` when it finishes or errors; it records runtime version/extension ID, saved-window routing, effective batch values, per-tab create/discard results, batch waits, and errors, without page URLs. This is intended to diagnose reports of tabs leaking into the popup window and batches not waiting. Dev build emitted both manifests at 7.4.14 and contains the trace module; 0 errors, 26 pre-existing `moment` warnings. |
 | 2026-08-18 | **v7.4.13** — Corrected the v7.4.12 private-batch migration so its completion marker is saved even when the user already chose a value other than the former default of 20. This preserves that choice and prevents repeated migration checks. Dev build clean: 0 errors, 26 pre-existing `moment` warnings. |

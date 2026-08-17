@@ -69,7 +69,7 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-17)
 
-- Version **7.4.15**, pushed to `origin/master` (`4fc622d`); dev build verified clean.
+- Version **7.4.16**, pending commit and push; dev build verified clean.
 - Dev build verified clean: 0 errors, 26 pre-existing warnings.
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
@@ -78,10 +78,10 @@ isn't needed for this fork's local-unpacked workflow.
   session to new windows when any saved window is private, so a mixed session cannot partly
   restore into the popup's regular window. **Not yet runtime-tested in a real browser —
   that's the next thing to verify**, see `docs/FORK-REVIEW.md` section 5 backlog.
-- Current diagnostic: v7.4.15 writes live `restore-trace-*.log` snapshots before tab work, when a
-  window is selected/created, and at each batch barrier, as well as a final file. The first line
-  identifies the actual runtime manifest version and extension ID; a stopped restore still leaves
-  its earlier snapshots.
+- Current diagnostic: v7.4.16 writes exactly one `restore-trace-*.log` file when a private restore
+  finishes or errors. v7.4.15's per-batch snapshot downloads were removed after a 226-tab runtime
+  test created 95 duplicate files. The trace records the runtime version and extension ID, routing,
+  effective batch values, creates, discard results, batch waits, and errors, without page URLs.
 - Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
   - **L-02** — backup export is off by default; user action, not code.
 
