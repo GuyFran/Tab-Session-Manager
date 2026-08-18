@@ -69,7 +69,8 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-19)
 
-- Version **7.4.18**; documentation/handoff pass and dev build verified; commit and push pending.
+- Version **7.4.18**, pushed to `origin/master` (`88618c8`); documentation/handoff pass and dev
+  build verified.
 - Dev build verified clean: v7.4.18, 0 errors, 27 known Sass-loader deprecation warnings (26 baseline plus
   the same toolchain warning for the new debug stylesheet).
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
