@@ -69,8 +69,9 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-17)
 
-- Version **7.4.16**, pushed to `origin/master` (`47d6e43`); dev build verified clean.
-- Dev build verified clean: 0 errors, 26 pre-existing warnings.
+- Version **7.4.17**, pending commit and push; dev build verified clean.
+- Dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings (26 baseline plus
+  the same toolchain warning for the new debug stylesheet).
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
   `"incognito": "spanning"`). Tabs are created live then immediately discarded, batched, with a
@@ -78,10 +79,11 @@ isn't needed for this fork's local-unpacked workflow.
   session to new windows when any saved window is private, so a mixed session cannot partly
   restore into the popup's regular window. **Not yet runtime-tested in a real browser —
   that's the next thing to verify**, see `docs/FORK-REVIEW.md` section 5 backlog.
-- Current diagnostic: v7.4.16 writes exactly one `restore-trace-*.log` file when a private restore
-  finishes or errors. v7.4.15's per-batch snapshot downloads were removed after a 226-tab runtime
-  test created 95 duplicate files. The trace records the runtime version and extension ID, routing,
-  effective batch values, creates, discard results, batch waits, and errors, without page URLs.
+- Current diagnostic: v7.4.17 automatically opens a normal, non-incognito “Incognito restore
+  debug” window before creating private tabs. It shows live routing, batch, tab-create/discard, and
+  error events (without URLs), keeps the latest 2,000 events, and offers explicit Copy/Download
+  buttons. It writes no automatic diagnostic downloads; the debug page itself is excluded from
+  saved sessions.
 - Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
   - **L-02** — backup export is off by default; user action, not code.
 

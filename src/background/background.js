@@ -43,6 +43,7 @@ import { compressAllSessions } from "./compressAllSessions";
 import { startTracking, endTrackingByWindowDelete, updateTrackingStatus } from "./track";
 import { handleThumbnailTabUpdated, handleThumbnailTabActivated } from "./thumbnails";
 import { startPreloadSweep, stopPreloadSweep, getPreloadSweepStatus } from "./preloadSweep";
+import { getRestoreDebug, downloadRestoreDebug } from "./restoreDebug";
 
 const logDir = "background/background";
 
@@ -191,6 +192,10 @@ const onMessageListener = async (request, sender, sendResponse) => {
       return stopPreloadSweep();
     case "getPreloadSweepStatus":
       return getPreloadSweepStatus();
+    case "getRestoreDebug":
+      return getRestoreDebug();
+    case "downloadRestoreDebug":
+      return downloadRestoreDebug();
   }
 };
 

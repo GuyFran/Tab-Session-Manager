@@ -40,6 +40,12 @@ const getHTMLPlugins = (browserDir, outputDir = "dev", sourceDir = "src") => [
     filename: path.resolve(__dirname, `${outputDir}/${browserDir}/offscreen/index.html`),
     template: `${sourceDir}/offscreen/index.html`,
     chunks: ["offscreen"]
+  }),
+  new HtmlWebpackPlugin({
+    title: "Incognito Restore Debug",
+    filename: path.resolve(__dirname, `${outputDir}/${browserDir}/debug/index.html`),
+    template: `${sourceDir}/debug/index.html`,
+    chunks: ["debug"]
   })
 ];
 
@@ -56,7 +62,8 @@ const getEntry = (sourceDir = "src") => {
     options: path.resolve(__dirname, `${sourceDir}/options/index.js`),
     replaced: path.resolve(__dirname, `${sourceDir}/replaced/replaced.js`),
     background: path.resolve(__dirname, `${sourceDir}/background/background.js`),
-    offscreen: path.resolve(__dirname, `${sourceDir}/offscreen/offscreen.js`)
+    offscreen: path.resolve(__dirname, `${sourceDir}/offscreen/offscreen.js`),
+    debug: path.resolve(__dirname, `${sourceDir}/debug/index.js`)
   };
 };
 

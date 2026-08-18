@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-18; current version **7.4.16**, dev build verified clean; runtime verification pending
+**Last reassessed:** 2026-08-18; current version **7.4.17**, dev build verified clean; runtime verification pending
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -292,6 +292,14 @@ any private window as an all-new-window restore. This prevents a leading normal 
 mixed session from being restored into the popup's regular window before a later private window is
 opened.
 
+**F-07 — Live incognito restore debug (v7.4.17)** (`src/background/restoreDebug.js`,
+`src/debug/`). Every restore containing private tabs automatically opens one normal extension popup
+window before tab creation. It provides live, URL-free events and summary counts for effective
+routing, created windows, configured and completed batches, created/failed tabs, discard outcomes,
+and restore errors. It retains at most 2,000 events and updates the visible window while restoring.
+Logs are copied or downloaded only by an explicit button click—there are no automatic downloads.
+The debug page is excluded from saved sessions so its own window cannot pollute auto-save data.
+
 **Known limits, by design:**
 - Only pages actually *viewed* get a thumbnail — background tabs can't be captured
   (`captureVisibleTab` is active-tab-only; that's a browser restriction, same for all suspender
@@ -315,6 +323,7 @@ opened.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-18 | **v7.4.17** — Replaced automatic trace downloads with a live “Incognito restore debug” extension popup, opened before private tab creation. It displays runtime version/ID, effective routing, batch progress, create/discard outcomes, errors, and the last 2,000 URL-free events; Copy and Download are explicit actions. New debug extension page/bundle, background debug-state/message API, and auto-save ignore rule for the page. Removed obsolete `restoreTrace.js`. Dev build: 0 errors; 27 known Sass-loader deprecation warnings (26 baseline plus the same toolchain warning for the new stylesheet). Runtime verification pending. |
 | 2026-08-18 | **v7.4.16** — Corrected private-restore diagnostics and discard verification after a real Chrome v7.4.15 run. Its 226-tab private session correctly used batch size 5 but created 95 cumulative trace downloads (start/window plus before/after each of 46 batches); v7.4.16 restores a single finish/error trace download. The trace showed that `tabs.discard()` was followed by a failing `tabs.get()` (`No tab with id`); Chrome returns the discarded `Tab` directly, so the second lookup was removed. Fallback tab-creation errors are now preserved in the trace instead of becoming `undefined`. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.15** — Private-restore routing and live diagnostics. If a saved session contains any private window, every saved window now restores through `openInNewWindow`, preventing a mixed session's leading normal window from going into the popup's current regular window. Reworked the tab batch barrier to wait for and clear each batch (including the final partial batch) before launching another. The private-restore trace now downloads snapshots at startup, window routing/creation, and before/after every batch wait, so it is available even if the restore is stopped. The startup snapshot records the runtime version and stable extension ID for proof that the loaded code is current. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.14** — Added automatic private-restore tracing. A restore involving an incognito window downloads `TabSessionManager/restore-trace-<timestamp>.log` when it finishes or errors; it records runtime version/extension ID, saved-window routing, effective batch values, per-tab create/discard results, batch waits, and errors, without page URLs. This is intended to diagnose reports of tabs leaking into the popup window and batches not waiting. Dev build emitted both manifests at 7.4.14 and contains the trace module; 0 errors, 26 pre-existing `moment` warnings. |

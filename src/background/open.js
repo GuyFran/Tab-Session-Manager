@@ -6,7 +6,7 @@ import { returnReplaceURL, replacePage } from "./replace.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { startPreloadSweep } from "./preloadSweep.js";
-import { createRestoreTrace } from "./restoreTrace.js";
+import { createRestoreDebug } from "./restoreDebug.js";
 
 const logDir = "background/open";
 
@@ -15,7 +15,10 @@ export async function openSession(session, property = "openInNewWindow") {
   const hasIncognitoWindow = Object.values(session.windows).some(tabs =>
     Object.values(tabs).some(tab => tab.incognito)
   );
-  const trace = hasIncognitoWindow ? createRestoreTrace(session, property) : null;
+  // Prevent the debug window and the subsequently restored private window from
+  // being picked up as a newly created tracked-session window.
+  if (hasIncognitoWindow) await setLastFocusedWindowId(browser.windows.WINDOW_ID_NONE);
+  const trace = hasIncognitoWindow ? createRestoreDebug(session, property) : null;
   // The popup's current window must never receive part of a mixed private
   // session. When any saved window is private, restore every saved window into
   // its own window instead.
@@ -150,7 +153,7 @@ export async function openSession(session, property = "openInNewWindow") {
     trace?.add("restore-error", { message: e?.message || String(e) });
     throw e;
   } finally {
-    await trace?.download();
+    trace?.finish();
   }
 }
 

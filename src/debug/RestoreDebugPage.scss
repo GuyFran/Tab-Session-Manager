@@ -1,0 +1,138 @@
+.restoreDebug {
+  color: var(--main-text);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 680px;
+
+  &.waiting {
+    align-items: center;
+    justify-content: center;
+    color: var(--sub-text);
+  }
+
+  header {
+    align-items: flex-start;
+    background: var(--line);
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 20px;
+
+    h1 {
+      font-size: 19px;
+      margin: 0 0 4px;
+    }
+
+    p {
+      color: var(--sub-text);
+      margin: 0;
+    }
+  }
+
+  .phase {
+    background: var(--info);
+    border-radius: 12px;
+    color: #fff;
+    font-weight: bold;
+    padding: 4px 10px;
+    text-transform: uppercase;
+
+    &.finished {
+      background: var(--success);
+    }
+    &.error {
+      background: var(--error);
+    }
+  }
+
+  .identity {
+    border-bottom: 1px solid var(--line2);
+    color: var(--sub-text);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding: 10px 20px;
+  }
+
+  .summary {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    padding: 12px 20px;
+  }
+
+  .summaryItem {
+    background: var(--line);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+
+    span {
+      color: var(--sub-text);
+      font-size: 11px;
+    }
+
+    strong {
+      font-size: 16px;
+    }
+
+    &.warning {
+      background: color-mix(in srgb, var(--warn) 20%, var(--line));
+      strong {
+        color: var(--warn);
+      }
+    }
+  }
+
+  .controls {
+    align-items: center;
+    border-bottom: 1px solid var(--line2);
+    display: flex;
+    gap: 8px;
+    padding: 0 20px 12px;
+
+    button {
+      background: var(--highlight);
+      border: 0;
+      border-radius: 3px;
+      color: #fff;
+      cursor: pointer;
+      padding: 7px 10px;
+
+      &:last-of-type {
+        background: var(--button);
+        color: var(--main-text);
+      }
+    }
+  }
+
+  .restoreError {
+    color: var(--error);
+    font-weight: bold;
+    padding: 0 20px 10px;
+  }
+
+  .eventLog {
+    flex: 1;
+    margin: 0;
+    overflow: auto;
+    padding: 10px 20px;
+
+    pre {
+      border-bottom: 1px solid var(--line);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      margin: 0;
+      padding: 4px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  }
+
+  footer {
+    color: var(--sub-text);
+    padding: 6px 20px;
+  }
+}
