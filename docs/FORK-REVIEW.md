@@ -2,7 +2,7 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-18; current version **7.4.17**, dev build verified clean; runtime verification pending
+**Last reassessed:** 2026-08-19; current version **7.4.18**, documentation handoff prepared; dev build verified clean; runtime QA pending
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -46,7 +46,7 @@ Roughly 8.3k lines of JS/JSX across `src/background`, `src/popup`, `src/options`
 | Check | Result |
 | --- | --- |
 | `npm ci` | ✅ 634 packages, exit 0 |
-| Dev build (`webpack.config.dev.js`) | ✅ 0 errors, 26 warnings (all `moment` dynamic-locale requires, upstream) — produces `dev/chrome` + `dev/firefox` |
+| Dev build (`webpack.config.dev.js`) | ✅ v7.4.17: 0 errors, 27 warnings (26 upstream `moment` dynamic-locale requires plus the debug stylesheet's Sass-loader deprecation) — produces `dev/chrome` + `dev/firefox` |
 | `npm run build` (dist zips) | not run since the toolchain was restored — not needed for local unpacked use (see section 4) |
 | `npm audit` | ⚠️ 5 vulnerabilities (1 moderate, 4 high) — dev-only transitive deps in the webpack toolchain, not yet triaged, nothing shipped/reachable at runtime |
 | `npm run format:check` | ❌ 7 files unformatted, all pre-existing upstream (see B-07, retired) |
@@ -146,7 +146,7 @@ Some cases are brace-scoped, some are not, so `name`, `property`, `afterSession`
 one more bare `const beforeSession` to an unbraced case is an instant `SyntaxError`. Brace every case.
 
 **B-10 — Engine mismatch.** `package.json` pins `node: 24.13.0` / `npm: 11.7.0`; this machine has
-Node 24.11.1 / npm 11.6.2. Not enforced (no `engine-strict`), and the build passed — but the pin is
+Node 24.19.0 / npm 11.17.0. Not enforced (no `engine-strict`), and the build passes — but the pin is
 exact rather than a range, so it will keep drifting.
 
 **B-11 — Comments are predominantly Japanese.** Perfectly legitimate upstream, but if you plan to
@@ -170,7 +170,7 @@ That retires most of section 3. The rationale is recorded here so it isn't re-li
 | B-05 (`appProperties` sync crash) | Sync-only code path. |
 | Fork strategy / extension ID / `gecko.id` | Nothing to publish, nothing to merge. No `upstream` remote needed. |
 | B-07 Prettier drift, B-08 tests/CI, B-10 engines, B-11 comment language | Process hygiene for a multi-contributor project. |
-| `npm audit` (4 advisories) | All dev-only transitive deps inside the webpack toolchain. Not shipped, not reachable at runtime. |
+| `npm audit` (5 advisories) | All dev-only transitive deps inside the webpack toolchain. Not shipped, not reachable at runtime. |
 
 ### Workflow for this fork
 
@@ -184,45 +184,30 @@ Verified working: `dev/chrome` builds and contains `manifest.json`, `background`
 
 ### Local-only risks that replace the published-extension ones
 
-**L-01 — Extension ID is derived from the folder path.** Chrome computes an unpacked extension's
-ID from the absolute directory path. Moving or renaming this repo changes the ID, which changes the
-storage origin, which means **every saved session in IndexedDB becomes unreachable**. The same
-applies in reverse if the Web Store build is ever installed alongside — different ID, separate data,
-no migration. Either keep the folder put, or pin the ID by adding a `key` field to
-`src/manifest.json`.
+**L-01 — Extension ID path risk (resolved in v7.4.1).** Chrome would otherwise derive an unpacked
+extension ID from the absolute directory path, making saved IndexedDB sessions unreachable after a
+move or rename. `src/manifest.json` now has a pinned `key`, so the current Chrome ID remains
+`pheckpgfalekjmbbodbggfohpghjceog`; do not remove or replace that key.
 
 **L-02 — Backup export is off by default.** `ifBackup` defaults to `false`
 (`src/settings/defaultSettings.js:268`). An extension being actively edited is precisely the one
 that loses its own database. If this holds real sessions, enable backup in Options.
 
-**L-03 — B-04 is the one live bug in this configuration**, and only conditionally: the throwing
-line is gated behind `saveTabGroupsV2`, which defaults to `false` on Chrome and `true` on Firefox
-(`src/settings/defaultSettings.js:68`). Fix it if tab-group saving gets enabled.
+**L-03 — Tab-group session guard (resolved in v7.4.1).** The former conditional
+`session.tabGroups` crash was fixed with `session?.tabGroups?.some(...)`; no local action remains.
 
 ---
 
 ## 5. Backlog
 
-**v7.4.2 additions:** F-01 batched restore ✅ · F-02 thumbnail capture ✅ · F-03 placeholder
-preview ✅ (see section 6). Open: verify `ifLazyLoading` is still enabled in the live profile
-(user action — Options → Open → "Tab lazy loading"); runtime testing of restore-with-thousands
-and thumbnail display (user runs the app).
+Completed work is documented in section 6 and the review log. Only active work remains here.
 
 | ID | Item | Priority | Status |
 | --- | --- | --- | --- |
-| E-01 | Restore Node toolchain | P0 | ✅ Done (2026-08-17) — Node 24.19.0 / npm 11.17.0 installed via `winget install OpenJS.NodeJS.LTS`; `npm ci` restored 634 packages; dev build clean. `src/credentials.js` placeholder recreated 2026-08-16. |
-| F-05 | Incognito restore uses discard-on-create; sweep covers discarded incognito tabs | P1 | ✅ Done (v7.4.8) — runtime test still pending |
-| P-01 | Sweep thrashes auto-save: each swept tab fires `tabs.onUpdated`(complete) → `setUpdateTempTimer` → a full temp-session rewrite. On a mass restore that is one whole-profile serialisation per tab, in the exact scenario the sweep exists to make bearable. | P1 | ✅ Done (v7.4.10) — `setUpdateTempTimer` returns while a sweep is active. |
-| P-02 | Header sweep button is always enabled, but `startPreloadSweep` returns silently when `ifLazyLoading` is off — click does nothing, no feedback | P3 | ✅ Done (v7.4.10) — control is disabled and labelled with the lazy-loading setting when unavailable. |
-| L-01 | Pin extension ID via `key` in `src/manifest.json` | P1 | ✅ Done (v7.4.1) — stable ID `pheckpgfalekjmbbodbggfohpghjceog`; private key in gitignored `extension-key.pem` |
+| QA-01 | In Chrome, load the v7.4.18 unpacked build; enable “Allow in Incognito”, save a private-only and a mixed session, restore each, and confirm all windows route correctly, batch size 5 is respected, tabs are discarded, and one URL-free live debug panel reports no errors. Record the observed counts/results. | P1 | ☐ User/runtime action — v7.4.15's 226-tab run confirmed batching; v7.4.16/17 changed discard verification and diagnostics afterward. |
 | L-02 | Enable backup export in Options if real sessions are stored | P1 | ☐ **User action** — Options → Backup, once the extension is loaded |
-| B-04 | Fix `session?.tabGroups?.some(...)` in `controlSessions.js:232` | P2 | ✅ Done (v7.4.1) |
-| B-06 | Export chunk math emits a stray empty `.json` for >32 MB sessions | P3 | ✅ Done (v7.4.1) — chunk count clamped to `sessions.length` |
-| B-03 | `reject` undeclared in `sessions.js` `deleteAll()` — error path hangs | P3 | ✅ Done (v7.4.1) |
-| B-02 | Dead `DBUpdate()` in `sessions.js` references undefined `Session` | P4 | ✅ Done (v7.4.1) — removed along with its commented-out call site |
-| B-09 | Brace `case`s declaring variables in the `background.js` message switch | P4 | ✅ Done (v7.4.1) — braced the 4 leaking cases (`saveCurrentSession`, `remove`, `getSessions`, `getCurrentSession`) |
 
-Retired, not open: S-01, S-02, B-05, B-07, B-08, B-10, B-11 — see section 4.
+Completed items and retired findings remain recorded in sections 4, 6, and 7; they are not backlog.
 
 ---
 
@@ -258,7 +243,7 @@ next tab is activated (Chrome refuses to discard the active tab, so discard alwa
 Pauses while the swept window is focused (3 s recheck); toolbar badge shows the remaining count;
 original active tab of each window is re-activated at the end. End state per tab: real URL, real
 title, stored thumbnail, natively suspended. Message handlers `startPreloadSweep` (all normal
-windows if no ids passed) / `stopPreloadSweep` exist for a future manual UI trigger.
+windows if no ids passed) / `stopPreloadSweep` power the v7.4.7 popup-header manual control.
 
 **F-05 — Incognito restore (v7.4.8, v7.4.16)** (`src/background/open.js`, `src/background/preloadSweep.js`).
 Chrome refuses to load extension pages in incognito windows under `"incognito": "spanning"`, so the
@@ -323,6 +308,7 @@ The debug page is excluded from saved sessions so its own window cannot pollute 
 
 | Date | Change |
 | --- | --- |
+| 2026-08-19 | **v7.4.18** — Documentation cleanse and multi-agent handoff. Updated the actual build-warning count to 27, corrected the retired audit count to 5, removed stale resolved-risk wording, moved completed items out of the active backlog, and made the exact remaining Chrome verification a single QA-01 task. `AGENTS.md` now defines the read order, single source of truth, parallel-edit safety, closeout, and runtime-evidence protocol. Documentation-only version bump; dev build: 0 errors, 27 known warnings. |
 | 2026-08-18 | **v7.4.17** — Replaced automatic trace downloads with a live “Incognito restore debug” extension popup, opened before private tab creation. It displays runtime version/ID, effective routing, batch progress, create/discard outcomes, errors, and the last 2,000 URL-free events; Copy and Download are explicit actions. New debug extension page/bundle, background debug-state/message API, and auto-save ignore rule for the page. Removed obsolete `restoreTrace.js`. Dev build: 0 errors; 27 known Sass-loader deprecation warnings (26 baseline plus the same toolchain warning for the new stylesheet). Runtime verification pending. |
 | 2026-08-18 | **v7.4.16** — Corrected private-restore diagnostics and discard verification after a real Chrome v7.4.15 run. Its 226-tab private session correctly used batch size 5 but created 95 cumulative trace downloads (start/window plus before/after each of 46 batches); v7.4.16 restores a single finish/error trace download. The trace showed that `tabs.discard()` was followed by a failing `tabs.get()` (`No tab with id`); Chrome returns the discarded `Tab` directly, so the second lookup was removed. Fallback tab-creation errors are now preserved in the trace instead of becoming `undefined`. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
 | 2026-08-18 | **v7.4.15** — Private-restore routing and live diagnostics. If a saved session contains any private window, every saved window now restores through `openInNewWindow`, preventing a mixed session's leading normal window from going into the popup's current regular window. Reworked the tab batch barrier to wait for and clear each batch (including the final partial batch) before launching another. The private-restore trace now downloads snapshots at startup, window routing/creation, and before/after every batch wait, so it is available even if the restore is stopped. The startup snapshot records the runtime version and stable extension ID for proof that the loaded code is current. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |

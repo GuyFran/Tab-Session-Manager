@@ -67,25 +67,42 @@ incognito windows from the extension entirely.
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## Current status (2026-08-17)
+## Current status (2026-08-19)
 
-- Version **7.4.17**, pushed to `origin/master` (`d06cde1`); dev build verified clean.
-- Dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings (26 baseline plus
+- Version **7.4.18**; documentation/handoff pass and dev build verified; commit and push pending.
+- Dev build verified clean: v7.4.18, 0 errors, 27 known Sass-loader deprecation warnings (26 baseline plus
   the same toolchain warning for the new debug stylesheet).
 - Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
   `"incognito": "spanning"`). Tabs are created live then immediately discarded, batched, with a
   dedicated `incognitoTabCreateBatchSize` setting (default 5). v7.4.15 routes an entire saved
   session to new windows when any saved window is private, so a mixed session cannot partly
-  restore into the popup's regular window. **Not yet runtime-tested in a real browser —
-  that's the next thing to verify**, see `docs/FORK-REVIEW.md` section 5 backlog.
+  restore into the popup's regular window. A v7.4.15 real-Chrome run confirmed 226 private tabs
+  used batch size 5, but the post-v7.4.16/v7.4.17 behavior still needs its final real-browser
+  verification; see `docs/FORK-REVIEW.md` section 5.
 - Current diagnostic: v7.4.17 automatically opens a normal, non-incognito “Incognito restore
   debug” window before creating private tabs. It shows live routing, batch, tab-create/discard, and
   error events (without URLs), keeps the latest 2,000 events, and offers explicit Copy/Download
   buttons. It writes no automatic diagnostic downloads; the debug page itself is excluded from
   saved sessions.
 - Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
+  - **QA-01** — manually verify the current private/mixed-session restore and its live debug
+    panel in Chrome.
   - **L-02** — backup export is off by default; user action, not code.
+
+## Multi-agent handoff protocol
+
+- **One source of truth:** read this file, then `docs/FORK-REVIEW.md`; update that review's
+  backlog, feature record, and dated log in the same change. Do not create a second status or
+  TODO document.
+- **Parallel safety:** before editing, inspect `git status --short`; preserve unrelated or
+  untracked work (currently `.claude/`). Assign agents disjoint files or read-only review/QA
+  tasks. The coordinating agent integrates and commits.
+- **Change closeout:** code changes require matching version bumps in both manifests, a dev build,
+  a review-log entry with actual verification status, then a `7.4.x - …` commit and push to
+  `origin/master`. Documentation-only changes follow the same project-level version/commit rule.
+- **Runtime evidence:** never call Chrome behavior verified from code alone. Record the exact
+  scenario, observed debug-panel results, and remaining gaps in `docs/FORK-REVIEW.md`.
 
 ## Conventions already established
 
