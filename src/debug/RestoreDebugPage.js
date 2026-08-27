@@ -97,7 +97,7 @@ export default class RestoreDebugPage extends Component {
 
         {summary.debugTabLimit && (
           <div className="restoreError">
-            DEBUG TAB LIMIT ACTIVE — restoring at most {summary.debugTabLimit} tabs per session
+            DEBUG TAB LIMIT ACTIVE — restoring at most {summary.debugTabLimit} tabs per window
             {summary.debugSkippedTabs > 0 &&
               ` (${summary.debugSkippedTabs} tab${summary.debugSkippedTabs === 1 ? "" : "s"} skipped)`}
             . This is
