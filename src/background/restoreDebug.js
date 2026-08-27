@@ -39,6 +39,12 @@ const updateSummary = event => {
       activeRestoreDebug.phase = "restoring";
       summary.effectiveProperty = event.effectiveProperty;
       break;
+    case "debug-tab-limit":
+      summary.debugTabLimit = event.limit;
+      break;
+    case "debug-tab-limit-applied":
+      summary.debugSkippedTabs += event.skipped;
+      break;
     case "window-created":
       summary.createdWindowCount++;
       break;
@@ -138,6 +144,8 @@ export const createRestoreDebug = (session, property) => {
       discardedTabs: 0,
       discardSkippedTabs: 0,
       discardErrors: 0,
+      debugTabLimit: null,
+      debugSkippedTabs: 0,
       restoreError: null
     },
     events: []

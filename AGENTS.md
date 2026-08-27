@@ -73,6 +73,16 @@ lift it — verified 2026-08-27. Any automated run must load the extension throu
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
+## ⚠ TEMPORARY DEBUG CAP IS ACTIVE (v7.4.20)
+
+`src/background/open.js` has `const DEBUG_RESTORE_TAB_LIMIT = 10;` near the top. **Every restore
+currently stops after 10 tabs per session**, counted across all of that session's windows. This is a
+deliberate testing aid, not a bug — set it to `0` to restore everything again, and delete the
+constant plus its `budget` plumbing in `openSession`/`createTabs` when the incognito routing
+investigation is finished. While it is on, the Incognito restore debug panel shows a red
+"DEBUG TAB LIMIT ACTIVE" banner and the trace carries `debug-tab-limit` /
+`debug-tab-limit-applied` events.
+
 ## Current status (2026-08-27)
 
 - Version **7.4.19**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings

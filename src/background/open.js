@@ -10,6 +10,14 @@ import { createRestoreDebug } from "./restoreDebug.js";
 
 const logDir = "background/open";
 
+// ---------------------------------------------------------------------------
+// TEMPORARY DEBUG AID — restore at most this many tabs per session, counted
+// across every window of that session, so a large session can be exercised
+// quickly while the incognito restore routing is being diagnosed.
+// Set to 0 to restore everything again. Remove once the investigation is done.
+// ---------------------------------------------------------------------------
+const DEBUG_RESTORE_TAB_LIMIT = 10;
+
 export async function openSession(session, property = "openInNewWindow") {
   log.log(logDir, "openSession()", session, property);
   const hasIncognitoWindow = Object.values(session.windows).some(tabs =>
@@ -31,6 +39,15 @@ export async function openSession(session, property = "openInNewWindow") {
   let isFirstWindowFlag = true;
   let restoredWindowIds = [];
   tabList = {};
+  // Session-wide remaining-tab budget for the temporary debug limit above.
+  const budget = {
+    limit: DEBUG_RESTORE_TAB_LIMIT > 0 ? DEBUG_RESTORE_TAB_LIMIT : null,
+    remaining: DEBUG_RESTORE_TAB_LIMIT > 0 ? DEBUG_RESTORE_TAB_LIMIT : Infinity
+  };
+  if (budget.limit !== null) {
+    log.warn(logDir, `openSession() DEBUG_RESTORE_TAB_LIMIT active: ${budget.limit} tabs`);
+    trace?.add("debug-tab-limit", { limit: budget.limit });
+  }
   try {
     for (let win in session.windows) {
     const isIncognitoWindow = Object.values(session.windows[win]).some(tab => tab.incognito);
@@ -44,7 +61,7 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
-      await createTabs(session, win, currentWindow, false, trace);
+      await createTabs(session, win, currentWindow, false, trace, budget);
     };
     const openInNewWindow = async () => {
       log.log(logDir, "openSession() openInNewWindow()");
@@ -106,7 +123,7 @@ export async function openSession(session, property = "openInNewWindow") {
       }
 
       restoredWindowIds.push(currentWindow.id);
-      await createTabs(session, win, currentWindow, false, trace);
+      await createTabs(session, win, currentWindow, false, trace, budget);
     };
     const addToCurrentWindow = async () => {
       log.log(logDir, "openSession() addToCurrentWindow()");
@@ -119,7 +136,7 @@ export async function openSession(session, property = "openInNewWindow") {
         windowId: currentWindow.id,
         incognito: currentWindow.incognito
       });
-      await createTabs(session, win, currentWindow, true, trace);
+      await createTabs(session, win, currentWindow, true, trace, budget);
     };
 
     if (isFirstWindowFlag) {
@@ -264,7 +281,14 @@ const setWindowTitle = (session, windowId, currentWindow) => {
 };
 
 //現在のウィンドウにタブを生成
-async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = false, trace = null) {
+async function createTabs(
+  session,
+  win,
+  currentWindow,
+  isAddtoCurrentWindow = false,
+  trace = null,
+  budget = null
+) {
   log.log(logDir, "createTabs()", session, win, currentWindow, isAddtoCurrentWindow);
   let sortedTabs = [];
 
@@ -275,6 +299,32 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   sortedTabs.sort((a, b) => {
     return a.index - b.index;
   });
+
+  // TEMPORARY DEBUG AID: honour the session-wide DEBUG_RESTORE_TAB_LIMIT budget.
+  // Applied after sorting so the tabs kept are the first ones by tab index.
+  if (budget && budget.limit !== null) {
+    const requested = sortedTabs.length;
+    const allowed = Math.max(0, Math.min(requested, budget.remaining));
+    if (allowed < requested) {
+      sortedTabs = sortedTabs.slice(0, allowed);
+      log.warn(
+        logDir,
+        `createTabs() DEBUG_RESTORE_TAB_LIMIT: restoring ${allowed}/${requested} tabs of window ${win}`
+      );
+      trace?.add("debug-tab-limit-applied", {
+        windowId: currentWindow.id,
+        savedWindowId: win,
+        requested: requested,
+        restored: allowed,
+        skipped: requested - allowed
+      });
+    }
+    budget.remaining -= allowed;
+  }
+
+  // Nothing left in the budget: leave the window as-is rather than running the
+  // batch/discard machinery over an empty list.
+  if (sortedTabs.length === 0) return;
 
   const firstTabId = currentWindow.tabs[0].id;
   if (currentWindow.tabs[0].pinned) {

@@ -95,6 +95,16 @@ export default class RestoreDebugPage extends Component {
           />
         </section>
 
+        {summary.debugTabLimit && (
+          <div className="restoreError">
+            DEBUG TAB LIMIT ACTIVE — restoring at most {summary.debugTabLimit} tabs per session
+            {summary.debugSkippedTabs > 0 &&
+              ` (${summary.debugSkippedTabs} tab${summary.debugSkippedTabs === 1 ? "" : "s"} skipped)`}
+            . This is
+            a temporary testing cap in background/open.js, not a restore failure.
+          </div>
+        )}
+
         {summary.restoreError && <div className="restoreError">Restore error: {summary.restoreError}</div>}
 
         <section className="controls">
