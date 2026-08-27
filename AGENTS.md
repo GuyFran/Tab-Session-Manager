@@ -64,31 +64,38 @@ Load `dev/chrome` in `chrome://extensions` → Developer mode → Load unpacked.
 testing, also enable "Allow in Incognito" on the extension's card — without it Chrome hides
 incognito windows from the extension entirely.
 
+**Chrome 152 stable ignores `--load-extension`** (`extension_service.cc` logs `--load-extension is
+not allowed in Google Chrome, ignoring.`). `--enable-unsafe-extension-debugging`,
+`--disable-features=DisableLoadExtensionCommandLineSwitch` and `--remote-debugging-pipe` do **not**
+lift it — verified 2026-08-27. Any automated run must load the extension through the real
+`chrome://extensions` page instead of the command line.
+
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## Current status (2026-08-19)
+## Current status (2026-08-27)
 
-- Version **7.4.18**, pushed to `origin/master` (`88618c8`); documentation/handoff pass and dev
-  build verified.
-- Dev build verified clean: v7.4.18, 0 errors, 27 known Sass-loader deprecation warnings (26 baseline plus
-  the same toolchain warning for the new debug stylesheet).
-- Latest fork work: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
+- Version **7.4.19**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+  (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **QA-01 is done.** The private/mixed incognito restore was verified in real **Chrome 152** on
+  2026-08-27 — not from code reading. Both a private-only session (12 tabs) and a mixed session
+  (normal 3 + private 8) were restored while the popup requested `openInCurrentWindow`; both were
+  routed to new windows, the popup's own regular window was untouched, the private batch size was
+  the default 5, every tab was created without failure, every non-active private tab was discarded
+  on the first try with zero errors, and no diagnostic files were downloaded. Tabs stayed discarded
+  through t+120 s. Full numbers are in `docs/FORK-REVIEW.md` section 5 (QA-01 result).
+- Fork work being verified there: F-05/F-06 fix Chrome-incognito restore, which can't use the normal
   lazy-loading placeholder (extension pages don't load in incognito under
   `"incognito": "spanning"`). Tabs are created live then immediately discarded, batched, with a
   dedicated `incognitoTabCreateBatchSize` setting (default 5). v7.4.15 routes an entire saved
   session to new windows when any saved window is private, so a mixed session cannot partly
-  restore into the popup's regular window. A v7.4.15 real-Chrome run confirmed 226 private tabs
-  used batch size 5, but the post-v7.4.16/v7.4.17 behavior still needs its final real-browser
-  verification; see `docs/FORK-REVIEW.md` section 5.
-- Current diagnostic: v7.4.17 automatically opens a normal, non-incognito “Incognito restore
+  restore into the popup's regular window.
+- Diagnostics: v7.4.17 automatically opens a normal, non-incognito “Incognito restore
   debug” window before creating private tabs. It shows live routing, batch, tab-create/discard, and
   error events (without URLs), keeps the latest 2,000 events, and offers explicit Copy/Download
   buttons. It writes no automatic diagnostic downloads; the debug page itself is excluded from
-  saved sessions.
-- Open backlog highlight (full list + priorities in `docs/FORK-REVIEW.md` section 5):
-  - **QA-01** — manually verify the current private/mixed-session restore and its live debug
-    panel in Chrome.
+  saved sessions. Confirmed rendering live counts in the 2026-08-27 run.
+- Open backlog (full list + priorities in `docs/FORK-REVIEW.md` section 5):
   - **L-02** — backup export is off by default; user action, not code.
 
 ## Multi-agent handoff protocol

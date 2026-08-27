@@ -2,7 +2,8 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-08-19; current version **7.4.18**, documentation handoff prepared; dev build verified clean; runtime QA pending
+**Last reassessed:** 2026-08-27; current version **7.4.19**; dev build verified clean and the
+private/mixed incognito restore (F-05/F-06/F-07) **verified in real Chrome 152** — see QA-01 in section 5
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
@@ -41,12 +42,13 @@ Roughly 8.3k lines of JS/JSX across `src/background`, `src/popup`, `src/options`
 
 ---
 
-## 2. Build & tooling status (current — verified 2026-08-17)
+## 2. Build & tooling status (current — verified 2026-08-27)
 
 | Check | Result |
 | --- | --- |
-| `npm ci` | ✅ 634 packages, exit 0 |
-| Dev build (`webpack.config.dev.js`) | ✅ v7.4.17: 0 errors, 27 warnings (26 upstream `moment` dynamic-locale requires plus the debug stylesheet's Sass-loader deprecation) — produces `dev/chrome` + `dev/firefox` |
+| `npm ci` | ✅ 634 packages, exit 0 (not re-run 2026-08-27 — `node_modules/` already present) |
+| Dev build (`webpack.config.dev.js`) | ✅ v7.4.19: 0 errors, 27 warnings (26 upstream `moment` dynamic-locale requires plus the debug stylesheet's Sass-loader deprecation) — produces `dev/chrome` + `dev/firefox` |
+| Real-browser load | ✅ Chrome 152.0.7977.64, `dev/chrome` loaded unpacked, ID `pheckpgfalekjmbbodbggfohpghjceog`, Allow in Incognito on. **`--load-extension` is ignored by Chrome 152 stable** — use `chrome://extensions` → Load unpacked (see QA-01, section 5) |
 | `npm run build` (dist zips) | not run since the toolchain was restored — not needed for local unpacked use (see section 4) |
 | `npm audit` | ⚠️ 5 vulnerabilities (1 moderate, 4 high) — dev-only transitive deps in the webpack toolchain, not yet triaged, nothing shipped/reachable at runtime |
 | `npm run format:check` | ❌ 7 files unformatted, all pre-existing upstream (see B-07, retired) |
@@ -204,10 +206,62 @@ Completed work is documented in section 6 and the review log. Only active work r
 
 | ID | Item | Priority | Status |
 | --- | --- | --- | --- |
-| QA-01 | In Chrome, load the v7.4.18 unpacked build; enable “Allow in Incognito”, save a private-only and a mixed session, restore each, and confirm all windows route correctly, batch size 5 is respected, tabs are discarded, and one URL-free live debug panel reports no errors. Record the observed counts/results. | P1 | ☐ User/runtime action — v7.4.15's 226-tab run confirmed batching; v7.4.16/17 changed discard verification and diagnostics afterward. |
 | L-02 | Enable backup export in Options if real sessions are stored | P1 | ☐ **User action** — Options → Backup, once the extension is loaded |
 
-Completed items and retired findings remain recorded in sections 4, 6, and 7; they are not backlog.
+QA-01 (real-Chrome verification of private/mixed restore) was **completed on 2026-08-27** — results
+below. Completed items and retired findings remain recorded in sections 4, 6, and 7; they are not
+backlog.
+
+### QA-01 result — verified in real Chrome 152 on 2026-08-27
+
+Run against Chrome **152.0.7977.64** on Windows 10, extension loaded unpacked from `dev/chrome`
+at **v7.4.18**, stable ID `pheckpgfalekjmbbodbggfohpghjceog`, **Allow in Incognito enabled**
+(`chrome.extension.isAllowedIncognitoAccess() === true`). Settings were stock apart from
+`ifSavePrivateWindow` turned on so private windows could be saved at all: `ifLazyLoading` on,
+`incognitoTabCreateBatchSize` **5** (untouched default), `tabCreateBatchSize` 20,
+`ifPreloadAfterRestore` on. Both restores were requested with property `openInCurrentWindow` —
+the routing case that used to leak tabs into the popup's own window.
+
+| Check | Scenario A — private-only | Scenario B — mixed normal + private |
+| --- | --- | --- |
+| Saved session | 1 private window, 12 tabs | 2 windows: normal 3 tabs + private 8 tabs |
+| Requested → effective routing | `openInCurrentWindow` → **`openInNewWindow`** | `openInCurrentWindow` → **`openInNewWindow`** |
+| Debug window before private tabs | ✅ `debug-panel-opened` at event 4, first `tab-created` at event 13 | ✅ `debug-panel-opened` at event 3, first `tab-created` at event 10 |
+| Windows created | 1 new private window | 2 new windows (1 normal, 1 private) |
+| Popup's current regular window | **untouched** — 4 tabs before and after, same tabs | **untouched** — 4 tabs before and after, same tabs |
+| Private batch size | configured 5 / effective **5**; batches 5 + 5 + 2 | configured 5 / effective **5**; batches 5 + 3 (normal window used 20) |
+| Tabs created | 12/12, **0 failures** | 11/11, **0 failures** |
+| Discards | 11 attempted, **11 succeeded**, 0 retries, 0 errors | 7 attempted, **7 succeeded**, 0 retries, 0 errors |
+| Browser-side discard truth | private window: 12 tabs, **11 discarded**, 1 active | private window: 8 tabs, **7 discarded**, 1 active |
+| Error events in trace | **0** | **0** |
+| Automatic downloads | **0 files** | **0 files** |
+| Restore duration | 1.6 s | 19.5 s |
+
+- **The one non-discarded tab in each private window is the active tab.** Chrome refuses to
+  discard the active tab, and `openTab()` only sets `shouldDiscardAfterCreate` for non-active
+  tabs. 11/12 and 7/8 are the correct, expected maxima — not failures.
+- **Tabs stay discarded.** A second independent run restored the same 12-tab private session and
+  sampled the window at t+5 s, +15 s, +30 s, +60 s, +90 s and +120 s: **11 discarded at every
+  sample**, 0 tabs loading. Sessions also survived a full Chrome restart, re-confirming the
+  pinned-`key` IndexedDB continuity (L-01).
+- **Live debug panel verified in the DOM**, not just in background state: phase `FINISHED`,
+  identity line `Extension 7.4.18 | ID pheckpgfalekjmbbodbggfohpghjceog | Requested:
+  openInCurrentWindow | Effective: openInNewWindow`, summary tiles `Saved tabs=12`,
+  `Windows created=1`, `Batch size=5`, `Batches=3/3`, `Tabs created=12/12`, `Tab failures=0`,
+  `Discarded=11`, `Discard errors=0`, 61 live event lines, and the three buttons
+  `Copy complete debug log` / `Download log` / `Close`.
+- **No download flood.** `chrome.downloads.search({})` returned **0** items after both restores,
+  confirming v7.4.16/v7.4.17 removed the automatic trace downloads.
+- **Known behaviour, not a defect:** the post-restore preload sweep did not advance during either
+  run (240 s wait each). The sweep pauses while the window it is sweeping has focus (F-04), and the
+  freshly restored private window holds focus. Tabs therefore simply stayed discarded, which is the
+  desired end state; the sweep resumes once focus moves elsewhere.
+
+**Environment note for future runs:** Chrome 152 stable **ignores the `--load-extension` command
+line switch** (`extension_service.cc`: `--load-extension is not allowed in Google Chrome,
+ignoring.`). `--enable-unsafe-extension-debugging`, `--disable-features=DisableLoadExtensionCommandLineSwitch`
+and `--remote-debugging-pipe` do not lift it. The extension must be loaded through the real
+`chrome://extensions` → **Load unpacked** flow.
 
 ---
 
@@ -261,6 +315,11 @@ v7.4.16 uses the `Tab` returned directly by Chrome's `tabs.discard()` call to de
 The former extra `tabs.get()` verification can reject for freshly discarded private tabs despite a
 successful discard, causing an unnecessary retry and falsely reporting failure.
 
+**Verified in Chrome 152 on 2026-08-27 (QA-01):** every non-active private tab was discarded on the
+first attempt — 11/11 and 7/7 discard calls succeeded with **zero retries and zero errors**,
+confirming the v7.4.16 change removed the false-failure path. Tabs remained discarded across
+samples out to t+120 s.
+
 **F-06 — Incognito restore flooding (v7.4.9, v7.4.15)** (`src/background/open.js`). F-05's
 `discardAfterCreate()` was fire-and-forget, so `createTabs()`'s batch barrier
 (`await Promise.all(openedTabs)`) only waited for `tabs.create` to return, not for the discard —
@@ -277,6 +336,12 @@ any private window as an all-new-window restore. This prevents a leading normal 
 mixed session from being restored into the popup's regular window before a later private window is
 opened.
 
+**Verified in Chrome 152 on 2026-08-27 (QA-01):** both a private-only and a mixed session were
+restored with the popup requesting `openInCurrentWindow`; the effective routing was
+`openInNewWindow` in both cases, and the popup's own regular window kept exactly its original four
+tabs. Batches ran 5 + 5 + 2 (12 private tabs) and 5 + 3 (8 private tabs) with the private window
+using the dedicated size 5 while the mixed session's normal window used 20.
+
 **F-07 — Live incognito restore debug (v7.4.17)** (`src/background/restoreDebug.js`,
 `src/debug/`). Every restore containing private tabs automatically opens one normal extension popup
 window before tab creation. It provides live, URL-free events and summary counts for effective
@@ -284,6 +349,13 @@ routing, created windows, configured and completed batches, created/failed tabs,
 and restore errors. It retains at most 2,000 events and updates the visible window while restoring.
 Logs are copied or downloaded only by an explicit button click—there are no automatic downloads.
 The debug page is excluded from saved sessions so its own window cannot pollute auto-save data.
+
+**Verified in Chrome 152 on 2026-08-27 (QA-01):** the debug window opened before the first private
+tab was created in both scenarios (event `debug-panel-opened` preceded the first `tab-created`), it
+rendered live counts in the DOM (`Batch size=5`, `Batches=3/3`, `Tabs created=12/12`,
+`Tab failures=0`, `Discarded=11`, `Discard errors=0`, 61 event lines) and exposed the
+`Copy complete debug log` / `Download log` / `Close` buttons. `chrome.downloads.search({})` returned
+**0** items after both restores, confirming no automatic diagnostic downloads.
 
 **Known limits, by design:**
 - Only pages actually *viewed* get a thumbnail — background tabs can't be captured
@@ -301,6 +373,10 @@ The debug page is excluded from saved sessions so its own window cannot pollute 
   post-restore sweep is unaffected.
 - All of this requires "Allow in Incognito" to be enabled for the extension in `chrome://extensions`.
   Without it the extension cannot see incognito windows at all and nothing here applies.
+- The restored private window keeps focus, and the post-restore sweep pauses while its target window
+  is focused (F-04). In practice the sweep therefore does not start until you switch away — observed
+  over 240 s in the 2026-08-27 QA run. Tabs stay discarded in the meantime, which is the intended end
+  state, so this is a timing characteristic rather than a fault.
 
 ---
 
@@ -308,6 +384,7 @@ The debug page is excluded from saved sessions so its own window cannot pollute 
 
 | Date | Change |
 | --- | --- |
+| 2026-08-27 | **v7.4.19 — QA-01 closed: private/mixed incognito restore verified in real Chrome 152.** Drove Chrome 152.0.7977.64 with an isolated profile over the DevTools protocol, loading `dev/chrome` (v7.4.18) through the real `chrome://extensions` → Load unpacked flow and enabling Allow in Incognito. Both scenarios restored with the popup requesting `openInCurrentWindow`. **Private-only (12 tabs):** effective routing `openInNewWindow`, 1 new private window, batch size 5 (batches 5+5+2), 12/12 tabs created, 0 failures, 11/11 discards succeeded with 0 retries and 0 errors, 0 trace events of any error type, popup's regular window unchanged at 4 tabs. **Mixed (normal 3 + private 8):** effective routing `openInNewWindow`, 2 new windows, private batch 5 (5+3) while the normal window used 20, 11/11 tabs created, 0 failures, 7/7 discards succeeded, popup's regular window unchanged at 4 tabs. The debug window opened before the first private tab in both runs and rendered live counts plus the Copy/Download/Close buttons; `chrome.downloads.search({})` returned 0 items, confirming no automatic download flood. A second run sampled the restored private window at t+5/15/30/60/90/120 s and found 11 tabs discarded at every sample, so tabs stay discarded; saved sessions also survived a Chrome restart, re-confirming the pinned-`key` IndexedDB continuity. The one non-discarded tab per private window is the active tab, which Chrome refuses to discard — the expected maximum. Also recorded that Chrome 152 stable now **ignores `--load-extension`**, so unpacked loading must go through the extensions page. Documentation-only version bump; dev build at 7.4.19: 0 errors, 27 known warnings. |
 | 2026-08-19 | **v7.4.18** — Documentation cleanse and multi-agent handoff. Updated the actual build-warning count to 27, corrected the retired audit count to 5, removed stale resolved-risk wording, moved completed items out of the active backlog, and made the exact remaining Chrome verification a single QA-01 task. `AGENTS.md` now defines the read order, single source of truth, parallel-edit safety, closeout, and runtime-evidence protocol. Documentation-only version bump; dev build: 0 errors, 27 known warnings; pushed as `88618c8`. |
 | 2026-08-18 | **v7.4.17** — Replaced automatic trace downloads with a live “Incognito restore debug” extension popup, opened before private tab creation. It displays runtime version/ID, effective routing, batch progress, create/discard outcomes, errors, and the last 2,000 URL-free events; Copy and Download are explicit actions. New debug extension page/bundle, background debug-state/message API, and auto-save ignore rule for the page. Removed obsolete `restoreTrace.js`. Dev build: 0 errors; 27 known Sass-loader deprecation warnings (26 baseline plus the same toolchain warning for the new stylesheet). Runtime verification pending. |
 | 2026-08-18 | **v7.4.16** — Corrected private-restore diagnostics and discard verification after a real Chrome v7.4.15 run. Its 226-tab private session correctly used batch size 5 but created 95 cumulative trace downloads (start/window plus before/after each of 46 batches); v7.4.16 restores a single finish/error trace download. The trace showed that `tabs.discard()` was followed by a failing `tabs.get()` (`No tab with id`); Chrome returns the discarded `Tab` directly, so the second lookup was removed. Fallback tab-creation errors are now preserved in the trace instead of becoming `undefined`. Dev build: 0 errors, 26 pre-existing `moment` warnings; runtime verification pending. |
