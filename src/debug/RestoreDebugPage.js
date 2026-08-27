@@ -93,7 +93,20 @@ export default class RestoreDebugPage extends Component {
             value={summary.discardErrors}
             warning={summary.discardErrors > 0}
           />
+          <SummaryItem
+            label="Blank (URL lost)"
+            value={summary.blankTabs}
+            warning={summary.blankTabs > 0}
+          />
         </section>
+
+        {summary.blankTabs > 0 && (
+          <div className="restoreError">
+            {summary.blankTabs} tab{summary.blankTabs === 1 ? "" : "s"} were discarded before their
+            URL was registered and are now permanently blank — activating them or running the sweep
+            cannot recover them.
+          </div>
+        )}
 
         {summary.debugTabLimit && (
           <div className="restoreError">

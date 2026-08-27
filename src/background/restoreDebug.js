@@ -66,6 +66,12 @@ const updateSummary = event => {
     case "tab-discard-result":
       if (event.discarded) summary.discardedTabs++;
       else summary.discardSkippedTabs++;
+      // A discarded tab with no URL is permanently blank — the tab cannot be
+      // recovered by activating it or by the preload sweep.
+      if (event.discarded && event.hasUrl === false) summary.blankTabs++;
+      break;
+    case "tab-url-commit-timeout":
+      summary.urlCommitTimeouts++;
       break;
     case "tab-discard-error":
     case "tab-discard-failed":
@@ -144,6 +150,8 @@ export const createRestoreDebug = (session, property) => {
       discardedTabs: 0,
       discardSkippedTabs: 0,
       discardErrors: 0,
+      blankTabs: 0,
+      urlCommitTimeouts: 0,
       debugTabLimit: null,
       debugSkippedTabs: 0,
       restoreError: null

@@ -88,7 +88,14 @@ per capped window.
 
 - Version **7.4.19**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
-- **QA-01 is done.** The private/mixed incognito restore was verified in real **Chrome 152** on
+- **BLANK-01 fixed in v7.4.22 — the incognito restore used to destroy every tab's URL.**
+  `tabs.create()` resolves before the navigation is registered; discarding in that gap left
+  permanently blank tabs (`url: ""`). `discardAfterCreate()` now waits for the URL to appear
+  (~50 ms) before discarding, and tracks the new id `tabs.discard()` assigns. A "Blank (URL lost)"
+  counter and red banner in the debug panel make any recurrence loud. **Caution for future QA:**
+  verifying routing/batching/discard counts is *not* enough — always check that restored tabs kept
+  their URL and title.
+- **QA-01 is done, with a caveat.** The private/mixed incognito restore was verified in real **Chrome 152** on
   2026-08-27 — not from code reading. Both a private-only session (12 tabs) and a mixed session
   (normal 3 + private 8) were restored while the popup requested `openInCurrentWindow`; both were
   routed to new windows, the popup's own regular window was untouched, the private batch size was

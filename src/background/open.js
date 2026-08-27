@@ -185,30 +185,63 @@ const isEnabledPlaceholder = currentWindow =>
   !(browserInfo().name === "Chrome" && currentWindow.incognito);
 
 const DISCARD_RETRY_DELAY_MS = 500;
+const URL_COMMIT_TIMEOUT_MS = 3000;
+const URL_COMMIT_POLL_MS = 50;
+
+// tabs.create() resolves before the new tab's navigation has been registered.
+// Discarding during that gap throws the pending navigation away and leaves a
+// permanently blank tab (url ""), which cannot be recovered by activating it or
+// by the preload sweep. Wait until the tab reports its URL before discarding.
+// Measured in Chrome 152: the URL is normally present after ~50 ms.
+const waitForUrlCommit = async (tabId, trace = null) => {
+  const deadline = Date.now() + URL_COMMIT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const tab = await browser.tabs.get(tabId).catch(() => null);
+    if (!tab) return false;
+    if (tab.url && tab.url !== "about:blank") return true;
+    await new Promise(resolve => setTimeout(resolve, URL_COMMIT_POLL_MS));
+  }
+  log.warn(logDir, "waitForUrlCommit() timed out", tabId);
+  trace?.add("tab-url-commit-timeout", { tabId: tabId, timeoutMs: URL_COMMIT_TIMEOUT_MS });
+  return false;
+};
 
 // placeholderの代わりに生成直後のタブをdiscardして、読み込みを止める
 // 生成直後は破棄できないことがあるため、失敗したら一度だけ再試行する
+// Returns the discarded tab's id, which Chrome changes on discard, or null.
 const discardAfterCreate = async (tabId, trace = null) => {
+  await waitForUrlCommit(tabId, trace);
+
   const tryDiscard = async () => {
     try {
       // Chrome resolves discard() with the updated tab. Querying the tab again
-      // can fail for an incognito tab even when discard itself succeeded.
+      // can fail for an incognito tab even when discard itself succeeded, and
+      // the discarded tab is given a NEW id, so the old one no longer resolves.
       const discardedTab = await browser.tabs.discard(tabId);
       const discarded = Boolean(discardedTab?.discarded);
-      trace?.add("tab-discard-result", { tabId: tabId, discarded: discarded });
-      return discarded;
+      // Never record the URL itself — only whether one survived the discard.
+      trace?.add("tab-discard-result", {
+        tabId: tabId,
+        discardedTabId: discardedTab?.id,
+        discarded: discarded,
+        hasUrl: Boolean(discardedTab?.url)
+      });
+      return discarded ? discardedTab : null;
     } catch (e) {
       trace?.add("tab-discard-error", { tabId: tabId, message: e?.message || String(e) });
-      return false;
+      return null;
     }
   };
 
-  if (await tryDiscard()) return;
+  const first = await tryDiscard();
+  if (first) return first.id ?? null;
   trace?.add("tab-discard-retry", { tabId: tabId, delayMs: DISCARD_RETRY_DELAY_MS });
   await new Promise(resolve => setTimeout(resolve, DISCARD_RETRY_DELAY_MS));
-  if (await tryDiscard()) return;
+  const second = await tryDiscard();
+  if (second) return second.id ?? null;
   log.warn(logDir, "discardAfterCreate() failed", tabId);
   trace?.add("tab-discard-failed", { tabId: tabId });
+  return null;
 };
 
 //ウィンドウとタブを閉じてcurrentWindowを返す
@@ -468,7 +501,11 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         tabList[tab.id] = newTab.id;
         // discardを待ってからresolveする。待たないとバッチの区切りが効かず、
         // discardが走る前に次のバッチが作られて大量のタブが同時に読み込まれる
-        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id, trace);
+        if (shouldDiscardAfterCreate) {
+          // discard() gives the tab a new id; keep tabList pointing at the live tab.
+          const discardedId = await discardAfterCreate(newTab.id, trace);
+          if (discardedId != null) tabList[tab.id] = discardedId;
+        }
         resolve();
       } catch (e) {
         log.warn(logDir, "openTab() tryOpen() replace", e);
@@ -485,7 +522,10 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         if (!newTab) return reject(fallbackError); //タブを開けなかった場合はreject
         trace?.add("tab-created-fallback", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
-        if (shouldDiscardAfterCreate) await discardAfterCreate(newTab.id, trace);
+        if (shouldDiscardAfterCreate) {
+          const discardedId = await discardAfterCreate(newTab.id, trace);
+          if (discardedId != null) tabList[tab.id] = discardedId;
+        }
         resolve();
       }
     };
