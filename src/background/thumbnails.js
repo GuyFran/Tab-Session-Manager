@@ -12,18 +12,45 @@ const CAPTURE_WIDTH = 500;
 const MIN_CAPTURE_INTERVAL_MS = 10 * 1000;
 const CAPTURE_DELAY_MS = 500;
 
+// 同じDBはreplacedページ(placeholder)からも開かれる。復元直後は多数のplaceholderが
+// 同時に開くため、こちらのonupgradeneededが走らないままDBだけが作られ、
+// objectStoreが存在しない接続を掴んでしまうことがある。その接続をキャッシュすると
+// 以降のputが必ず "object stores was not found" で失敗し続けるので、
+// storeの有無を確認し、無ければversionを上げて作り直す
+const ensureStore = db => {
+  if (db.objectStoreNames.contains(STORE_NAME)) return;
+  const store = db.createObjectStore(STORE_NAME, { keyPath: "url" });
+  store.createIndex("date", "date");
+};
+
 let DB;
 const openDB = () => {
-  if (DB) return Promise.resolve(DB);
+  if (DB && DB.objectStoreNames.contains(STORE_NAME)) return Promise.resolve(DB);
+  DB = null;
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const store = request.result.createObjectStore(STORE_NAME, { keyPath: "url" });
-      store.createIndex("date", "date");
-    };
+    const request = indexedDB.open(DB_NAME);
+    request.onupgradeneeded = () => ensureStore(request.result);
     request.onsuccess = () => {
-      DB = request.result;
-      resolve(DB);
+      const db = request.result;
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        DB = db;
+        return resolve(DB);
+      }
+      // storeが無いDBが既に存在する: versionを上げて明示的に作成する
+      log.warn(logDir, "openDB() store missing, upgrading", db.version);
+      const nextVersion = db.version + 1;
+      db.close();
+      const upgrade = indexedDB.open(DB_NAME, nextVersion);
+      upgrade.onupgradeneeded = () => ensureStore(upgrade.result);
+      upgrade.onsuccess = () => {
+        DB = upgrade.result;
+        resolve(DB);
+      };
+      upgrade.onerror = e => {
+        log.error(logDir, "openDB() upgrade", e);
+        reject(e);
+      };
+      upgrade.onblocked = () => log.warn(logDir, "openDB() upgrade blocked");
     };
     request.onerror = e => {
       log.error(logDir, "openDB()", e);

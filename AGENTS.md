@@ -88,6 +88,13 @@ per capped window.
 
 - Version **7.4.19**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **SWEEP-01 fixed in v7.4.23 — the post-restore "load → thumbnail → hibernate" pass never worked.**
+  Five faults: it never started (infinite focus wait); windows were swept in parallel; incognito
+  windows were swept for nothing; placeholders never advanced to their real URL (`replacePage()` in
+  the loop, plus the `onActivated` handler issuing a competing navigation on the same tab); and the
+  `thumbnails` IndexedDB was created without its object store by a race with placeholder pages, then
+  cached broken forever. Now: 6-tab restore sweeps in **15 s** with **all 6 thumbnails captured** and
+  every non-active tab left at its real URL, real title, natively discarded.
 - **BLANK-01 fixed in v7.4.22 — the incognito restore used to destroy every tab's URL.**
   `tabs.create()` resolves before the navigation is registered; discarding in that gap left
   permanently blank tabs (`url: ""`). `discardAfterCreate()` now waits for the URL to appear

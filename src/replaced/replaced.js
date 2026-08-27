@@ -61,11 +61,15 @@ const showThumbnail = () => {
   const request = indexedDB.open("thumbnails", 1);
   request.onupgradeneeded = () => {
     // backgroundのthumbnails.jsとスキーマを一致させる
+    // 復元直後は多数のplaceholderが同時に開くため、二重作成を防ぐ
+    if (request.result.objectStoreNames.contains("thumbnails")) return;
     const store = request.result.createObjectStore("thumbnails", { keyPath: "url" });
     store.createIndex("date", "date");
   };
   request.onsuccess = () => {
     try {
+      // storeが未作成のことがある。読み取り専用なので、無ければ何も表示しない
+      if (!request.result.objectStoreNames.contains("thumbnails")) return;
       const getRequest = request.result
         .transaction("thumbnails")
         .objectStore("thumbnails")

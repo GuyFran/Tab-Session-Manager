@@ -42,7 +42,12 @@ import { recordChange, undo, redo, updateUndoStatus } from "./undo";
 import { compressAllSessions } from "./compressAllSessions";
 import { startTracking, endTrackingByWindowDelete, updateTrackingStatus } from "./track";
 import { handleThumbnailTabUpdated, handleThumbnailTabActivated } from "./thumbnails";
-import { startPreloadSweep, stopPreloadSweep, getPreloadSweepStatus } from "./preloadSweep";
+import {
+  startPreloadSweep,
+  stopPreloadSweep,
+  getPreloadSweepStatus,
+  isPreloadSweeping
+} from "./preloadSweep";
 import { getRestoreDebug, downloadRestoreDebug } from "./restoreDebug";
 
 const logDir = "background/background";
@@ -201,6 +206,10 @@ const onMessageListener = async (request, sender, sendResponse) => {
 
 const handleReplace = async () => {
   await init();
+  // スウィープ中はタブのアクティブ化と実URLへの遷移をpreloadSweepが行う。
+  // ここでもreplacePage()を呼ぶと同じタブに対して二重に遷移を仕掛けることになり、
+  // 遷移が確定せずplaceholderのまま残る
+  if (isPreloadSweeping()) return;
   replacePage();
 };
 
