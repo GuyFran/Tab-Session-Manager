@@ -17,8 +17,13 @@ const RENDER_DELAY_MS = 500;
 let isSweeping = false;
 let shouldStop = false;
 let remainingCount = 0;
+// 現在スウィープ中のウィンドウ。background.jsのhandleReplace抑制はこのウィンドウ由来の
+// イベントに限定する(全ウィンドウを抑制すると、ユーザが他ウィンドウでクリックした
+// placeholderがスウィープ終了まで一切遷移しなくなる)
+let currentSweepWindowId = null;
 
 export const isPreloadSweeping = () => isSweeping;
+export const getSweepingWindowId = () => (isSweeping && !shouldStop ? currentSweepWindowId : null);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -99,16 +104,35 @@ const waitForLoad = async tabId => {
   return await browser.tabs.get(tabId).catch(() => null);
 };
 
+// discardはタブに新しいidを割り当てるため、戻り値のidも処理済みとして記録する。
+// 記録しないと(incognito && discarded)のタブが新idで再びスウィープ対象になり、
+// 先頭2タブが永久に再読込・再discardを繰り返してループが終わらない
+const discardProcessedTab = async (tabId, processedTabIds) => {
+  const discardedTab = await browser.tabs.discard(tabId).catch(() => null);
+  if (discardedTab?.id != null) processedTabIds.add(discardedTab.id);
+};
+
 const sweepWindow = async windowId => {
   const originalActiveTab = (
     await browser.tabs.query({ windowId: windowId, active: true }).catch(() => [])
   )[0];
 
+  currentSweepWindowId = windowId;
+
   // 処理済みのタブは再度スウィープ対象の状態に戻るため、明示的に記録して二度処理しない
   const processedTabIds = new Set();
   const focusState = { skipWait: false };
   let previousTabId = null;
+  // 万一idの追跡が破れても暴走しないよう、反復回数に上限を設ける
+  const initialTabCount = (await browser.tabs.query({ windowId: windowId }).catch(() => []))
+    .length;
+  const maxIterations = initialTabCount * 2 + 20;
+  let iterationCount = 0;
   while (!shouldStop) {
+    if (++iterationCount > maxIterations) {
+      log.warn(logDir, "sweepWindow() iteration cap reached", windowId, maxIterations);
+      break;
+    }
     const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => null);
     if (!tabs) break; //ウィンドウが閉じられた
     const nextTab = tabs.find(
@@ -122,7 +146,7 @@ const sweepWindow = async windowId => {
 
     // アクティブなタブはdiscardできないため、次のタブをアクティブにしてから前のタブをdiscardする
     await browser.tabs.update(nextTab.id, { active: true }).catch(() => {});
-    if (previousTabId != null) browser.tabs.discard(previousTabId).catch(() => {});
+    if (previousTabId != null) await discardProcessedTab(previousTabId, processedTabIds);
 
     // placeholderは対象タブを直接実URLへ遷移させる。replacePage()はアクティブタブを
     // 問い合わせてsetTimeoutで再試行する作りのため、スウィープのループ内では
@@ -155,6 +179,7 @@ const sweepWindow = async windowId => {
   if (previousTabId != null && previousTabId !== originalActiveTab?.id) {
     browser.tabs.discard(previousTabId).catch(() => {});
   }
+  currentSweepWindowId = null;
 };
 
 export const startPreloadSweep = async windowIds => {
@@ -193,6 +218,7 @@ export const startPreloadSweep = async windowIds => {
     // 途中で失敗してもスウィープ中の状態が残らないようにする
     remainingCount = 0;
     isSweeping = false;
+    currentSweepWindowId = null;
     updateBadge();
   }
 };

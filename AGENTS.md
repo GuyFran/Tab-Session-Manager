@@ -73,7 +73,7 @@ lift it — verified 2026-08-27. Any automated run must load the extension throu
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## ⚠ TEMPORARY DEBUG CAP IS ACTIVE (v7.4.21)
+## ⚠ TEMPORARY DEBUG CAP IS ACTIVE (since v7.4.20, per-window since v7.4.21)
 
 `src/background/open.js` has `const DEBUG_RESTORE_TAB_LIMIT = 10;` near the top. **Every restored
 window currently stops after 10 tabs.** The cap is per window, not per session, so a large normal
@@ -82,12 +82,24 @@ bug — set it to `0` to restore everything again, and delete the constant plus 
 `createTabs()` and the warn/trace block in `openSession()` when the incognito routing investigation
 is finished. While it is on, the Incognito restore debug panel shows a red "DEBUG TAB LIMIT ACTIVE"
 banner and the trace carries one `debug-tab-limit` event plus one `debug-tab-limit-applied` event
-per capped window.
+per capped window. Since v7.4.24, a window the cap truncated is NOT tracked, so a tracked session
+cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
-## Current status (2026-08-27)
+## Current status (2026-08-28)
 
-- Version **7.4.19**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.24**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.24 — adversarial review of the reload/sweep path fixed four more confirmed critical
+  defects** (16-agent review, every finding confirmed by 2 independent verifiers): the incognito
+  sweep looped forever (`tabs.discard()` new-id churn defeated `processedTabIds`); the sweep-time
+  `handleReplace` suppression was browser-wide and stranded user-clicked placeholders (now scoped
+  to the swept window, navigating the event's window explicitly); placeholder pages' never-closed
+  IndexedDB connections could deadlock the thumbnails-DB upgrade and freeze the sweep (connections
+  now closed + `versionchange` handlers + 10 s openDB watchdog); and restoring a *tracked* session
+  under `DEBUG_RESTORE_TAB_LIMIT` permanently rewrote the saved session down to the cap (tracking
+  now suppressed for truncated windows). Verified in Chrome 152 including a **full
+  save → kill Chrome → relaunch → reopen** incognito round-trip: session intact, 8/8 tabs, 0 blank,
+  sweep terminates (31–33 s; previously never for incognito).
 - **SWEEP-01 fixed in v7.4.23 — the post-restore "load → thumbnail → hibernate" pass never worked.**
   Five faults: it never started (infinite focus wait); windows were swept in parallel; incognito
   windows were swept for nothing; placeholders never advanced to their real URL (`replacePage()` in

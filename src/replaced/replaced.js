@@ -58,7 +58,10 @@ if (parameter.state == "open_faild") {
 // 拡張機能ページはbackgroundと同一オリジンなので、同じIndexedDBを直接参照できる
 const showThumbnail = () => {
   if (!/^https?:\/\//.test(parameter.url || "")) return;
-  const request = indexedDB.open("thumbnails", 1);
+  // versionを指定しない: backgroundが復旧のためにversionを上げた後に
+  // 低いversionで開くとVersionErrorになる。未作成ならversion 1で作られ、
+  // onupgradeneededでstoreを用意できる
+  const request = indexedDB.open("thumbnails");
   request.onupgradeneeded = () => {
     // backgroundのthumbnails.jsとスキーマを一致させる
     // 復元直後は多数のplaceholderが同時に開くため、二重作成を防ぐ
@@ -67,20 +70,31 @@ const showThumbnail = () => {
     store.createIndex("date", "date");
   };
   request.onsuccess = () => {
+    const db = request.result;
+    // 読み取り専用の接続を保持し続けるとbackgroundのversionアップグレードが
+    // 永久にblockedになる。versionchangeで必ず閉じ、読み終わったらすぐ閉じる
+    db.onversionchange = () => db.close();
     try {
       // storeが未作成のことがある。読み取り専用なので、無ければ何も表示しない
-      if (!request.result.objectStoreNames.contains("thumbnails")) return;
-      const getRequest = request.result
-        .transaction("thumbnails")
-        .objectStore("thumbnails")
-        .get(parameter.url);
+      if (!db.objectStoreNames.contains("thumbnails")) {
+        db.close();
+        return;
+      }
+      const transaction = db.transaction("thumbnails");
+      transaction.oncomplete = () => db.close();
+      transaction.onabort = () => db.close();
+      const getRequest = transaction.objectStore("thumbnails").get(parameter.url);
       getRequest.onsuccess = () => {
         if (!getRequest.result?.blob) return;
         const img = document.querySelector(".thumbnail");
         img.src = URL.createObjectURL(getRequest.result.blob);
         img.classList.add("visible");
       };
-    } catch (e) {}
+    } catch (e) {
+      try {
+        db.close();
+      } catch (e2) {}
+    }
   };
 };
 showThumbnail();

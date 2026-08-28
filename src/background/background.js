@@ -46,7 +46,7 @@ import {
   startPreloadSweep,
   stopPreloadSweep,
   getPreloadSweepStatus,
-  isPreloadSweeping
+  getSweepingWindowId
 } from "./preloadSweep";
 import { getRestoreDebug, downloadRestoreDebug } from "./restoreDebug";
 
@@ -204,13 +204,23 @@ const onMessageListener = async (request, sender, sendResponse) => {
   }
 };
 
-const handleReplace = async () => {
+// tabs.onActivatedはactiveInfo({tabId, windowId})、windows.onFocusChangedはwindowIdを渡す
+const handleReplace = async info => {
   await init();
-  // スウィープ中はタブのアクティブ化と実URLへの遷移をpreloadSweepが行う。
+  const eventWindowId = typeof info === "number" ? info : info?.windowId;
+  if (eventWindowId === browser.windows.WINDOW_ID_NONE) return;
+  // スウィープ対象のウィンドウではタブのアクティブ化と実URLへの遷移をpreloadSweepが行う。
   // ここでもreplacePage()を呼ぶと同じタブに対して二重に遷移を仕掛けることになり、
-  // 遷移が確定せずplaceholderのまま残る
-  if (isPreloadSweeping()) return;
-  replacePage();
+  // 遷移が確定せずplaceholderのまま残る。ただし抑制はそのウィンドウ由来のイベントに
+  // 限定する — 全体を抑制すると、スウィープ中にユーザが他ウィンドウでアクティブにした
+  // placeholderが遷移しないまま取り残される
+  const sweepingWindowId = getSweepingWindowId();
+  if (sweepingWindowId != null && eventWindowId === sweepingWindowId) return;
+  // 遷移先はイベントが起きたウィンドウを明示する。既定のWINDOW_ID_CURRENT(最後に
+  // フォーカスされたウィンドウ)は、スウィープ中や複数ウィンドウ操作中はイベント元と
+  // 食い違うことがあり、抑制の判定と遷移の対象がずれてしまう
+  if (eventWindowId != null) replacePage(eventWindowId);
+  else replacePage();
 };
 
 const onChangeStorageListener = async (changes, areaName) => {

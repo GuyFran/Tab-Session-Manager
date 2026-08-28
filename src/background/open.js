@@ -327,7 +327,9 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
 
   // TEMPORARY DEBUG AID: cap each window at DEBUG_RESTORE_TAB_LIMIT tabs.
   // Applied after sorting so the tabs kept are the first ones by tab index.
+  let truncatedByDebugLimit = false;
   if (DEBUG_RESTORE_TAB_LIMIT > 0 && sortedTabs.length > DEBUG_RESTORE_TAB_LIMIT) {
+    truncatedByDebugLimit = true;
     const requested = sortedTabs.length;
     sortedTabs = sortedTabs.slice(0, DEBUG_RESTORE_TAB_LIMIT);
     log.warn(
@@ -423,7 +425,21 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   }
 
   if (isTrackingSession(session.tag)) {
-    startTracking(session.id, win, currentWindow.id);
+    if (truncatedByDebugLimit) {
+      // トラッキングは保存済みセッションのウィンドウを生きているウィンドウで上書きする。
+      // デバッグ上限で切り詰めた10タブのウィンドウを同期させると、保存されていた残りの
+      // タブが保存データから完全に消える。切り詰めたウィンドウは追跡しない
+      log.warn(
+        logDir,
+        `createTabs() DEBUG_RESTORE_TAB_LIMIT: tracking suppressed for truncated window ${win} to protect the saved session`
+      );
+      trace?.add("debug-tab-limit-tracking-suppressed", {
+        windowId: currentWindow.id,
+        savedWindowId: win
+      });
+    } else {
+      startTracking(session.id, win, currentWindow.id);
+    }
   }
 }
 

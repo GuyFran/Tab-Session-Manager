@@ -23,18 +23,39 @@ const ensureStore = db => {
   store.createIndex("date", "date");
 };
 
+// versionアップグレードは他の接続(placeholderページ等)が全て閉じるまでblockedになり得る。
+// 永久に待つとawait先(captureActiveTab経由のスウィープ)が固まるため、上限を設けて
+// rejectする。呼び出し側は失敗を握り潰してサムネイル無しで続行する
+const OPEN_DB_TIMEOUT_MS = 10 * 1000;
+
+const adoptDB = db => {
+  // 将来のversionアップグレードをこの接続がblockしないようにする
+  db.onversionchange = () => {
+    db.close();
+    if (DB === db) DB = null;
+  };
+  DB = db;
+  return db;
+};
+
 let DB;
 const openDB = () => {
   if (DB && DB.objectStoreNames.contains(STORE_NAME)) return Promise.resolve(DB);
   DB = null;
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`openDB() timed out after ${OPEN_DB_TIMEOUT_MS}ms (upgrade blocked?)`));
+    }, OPEN_DB_TIMEOUT_MS);
+    const settle = (fn, value) => {
+      clearTimeout(timeout);
+      fn(value);
+    };
     const request = indexedDB.open(DB_NAME);
     request.onupgradeneeded = () => ensureStore(request.result);
     request.onsuccess = () => {
       const db = request.result;
       if (db.objectStoreNames.contains(STORE_NAME)) {
-        DB = db;
-        return resolve(DB);
+        return settle(resolve, adoptDB(db));
       }
       // storeが無いDBが既に存在する: versionを上げて明示的に作成する
       log.warn(logDir, "openDB() store missing, upgrading", db.version);
@@ -42,19 +63,16 @@ const openDB = () => {
       db.close();
       const upgrade = indexedDB.open(DB_NAME, nextVersion);
       upgrade.onupgradeneeded = () => ensureStore(upgrade.result);
-      upgrade.onsuccess = () => {
-        DB = upgrade.result;
-        resolve(DB);
-      };
+      upgrade.onsuccess = () => settle(resolve, adoptDB(upgrade.result));
       upgrade.onerror = e => {
         log.error(logDir, "openDB() upgrade", e);
-        reject(e);
+        settle(reject, e);
       };
       upgrade.onblocked = () => log.warn(logDir, "openDB() upgrade blocked");
     };
     request.onerror = e => {
       log.error(logDir, "openDB()", e);
-      reject(e);
+      settle(reject, e);
     };
   });
 };
