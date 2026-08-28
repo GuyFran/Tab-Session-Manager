@@ -128,13 +128,14 @@ const downscale = async dataUrl => {
 // ServiceWorker再起動でリセットされるが、スロットリング用途なので問題ない
 let lastCaptureTimes = {};
 
-export const captureActiveTab = async windowId => {
+export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => {
   try {
     if (!getSettings("ifCaptureThumbnails")) return;
     const [tab] = await browser.tabs.query({ active: true, windowId: windowId });
     if (!tab || !isCapturableUrl(tab.url) || tab.status !== "complete") return;
-    // プライベートウィンドウのページは、プライベートウィンドウを保存する設定が有効な場合のみ保存する
-    if (tab.incognito && !getSettings("ifSavePrivateWindow")) return;
+    // 受動キャプチャ: プライベート保存設定がオフならスキップ
+    // スウィープ経由: 復元済みタブなのでifSavePrivateWindowに関係なくキャプチャする
+    if (tab.incognito && !fromSweep && !getSettings("ifSavePrivateWindow")) return;
 
     const lastCaptureTime = lastCaptureTimes[tab.url] || 0;
     if (Date.now() - lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) return;

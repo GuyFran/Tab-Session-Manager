@@ -84,9 +84,11 @@ const shouldSweepWindow = async windowId => {
   if (!window) return false;
   if (!window.incognito) return true;
   // Chromeのincognitoタブは復元時点で既に実URL・実タイトルを保ったままdiscardされている
-  // (v7.4.22)。サムネイルを保存できない設定では、スウィープしても得るものがない
-  if (!getSettings("ifCaptureThumbnails") || !getSettings("ifSavePrivateWindow")) {
-    log.info(logDir, "shouldSweepWindow() skipping incognito window", windowId);
+  // (v7.4.22)。サムネイルキャプチャ自体が無効ならスウィープは無意味。
+  // ifSavePrivateWindowは受動キャプチャ(閲覧中)のゲートであり、復元後スウィープには不要:
+  // ユーザが復元した以上、サムネイルを撮る意味がある
+  if (!getSettings("ifCaptureThumbnails")) {
+    log.info(logDir, "shouldSweepWindow() skipping incognito window (thumbnails off)", windowId);
     return false;
   }
   return true;
@@ -165,7 +167,7 @@ const sweepWindow = async windowId => {
     const loadedTab = await waitForLoad(nextTab.id);
     if (loadedTab && loadedTab.status === "complete") {
       await sleep(RENDER_DELAY_MS);
-      await captureActiveTab(windowId);
+      await captureActiveTab(windowId, { fromSweep: true });
     }
     previousTabId = nextTab.id;
     if (remainingCount > 0) remainingCount--;
