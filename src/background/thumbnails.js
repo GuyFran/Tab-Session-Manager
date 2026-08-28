@@ -128,29 +128,76 @@ const downscale = async dataUrl => {
 // ServiceWorker再起動でリセットされるが、スロットリング用途なので問題ない
 let lastCaptureTimes = {};
 
+// キャプチャの成否と理由の軽量トレース(直近200件)。デバッグ時にSWコンソールで
+// globalThis.__thumbLog を見る
+const traceCapture = entry => {
+  try {
+    const buf = (globalThis.__thumbLog = globalThis.__thumbLog || []);
+    buf.push(`${new Date().toISOString().slice(11, 23)} ${entry}`);
+    if (buf.length > 200) buf.shift();
+  } catch (e) {}
+};
+
+// ChromeはcaptureVisibleTab()を「2回/秒」に制限している
+// (MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND)。スウィープはキャッシュ済みページを
+// 600ms間隔程度で処理し、さらに受動パス(onActivated/onUpdated)が同じタブに重複発火
+// するため、無対策では割当を超えた瞬間のタブのサムネイルだけが欠落する(実測)。
+// 全キャプチャを直列キューに通し、呼び出し間隔を空けて割当超過を構造的に防ぐ
+const CAPTURE_SPACING_MS = 600;
+let captureQueue = Promise.resolve();
+let lastCaptureCallAt = 0;
+const enqueueCapture = task => {
+  const run = captureQueue.then(async () => {
+    const wait = lastCaptureCallAt + CAPTURE_SPACING_MS - Date.now();
+    if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+    return await task();
+  });
+  // 失敗してもキューを止めない
+  captureQueue = run.catch(() => {});
+  return run;
+};
+
 export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => {
   try {
     if (!getSettings("ifCaptureThumbnails")) return;
     const [tab] = await browser.tabs.query({ active: true, windowId: windowId });
-    if (!tab || !isCapturableUrl(tab.url) || tab.status !== "complete") return;
+    if (!tab || !isCapturableUrl(tab.url) || tab.status !== "complete") {
+      traceCapture(`skip pre-check w=${windowId} sweep=${fromSweep} url=${tab?.url} status=${tab?.status}`);
+      return;
+    }
     // 受動キャプチャ: プライベート保存設定がオフならスキップ
     // スウィープ経由: 復元済みタブなのでifSavePrivateWindowに関係なくキャプチャする
     if (tab.incognito && !fromSweep && !getSettings("ifSavePrivateWindow")) return;
 
-    const lastCaptureTime = lastCaptureTimes[tab.url] || 0;
-    if (Date.now() - lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) return;
-    lastCaptureTimes[tab.url] = Date.now();
+    if (Date.now() - (lastCaptureTimes[tab.url] || 0) < MIN_CAPTURE_INTERVAL_MS) {
+      traceCapture(`skip rate-limit url=${tab.url}`);
+      return;
+    }
 
-    // 保護されたページ等ではエラーになるのでcatchで無視する
-    const dataUrl = await browser.tabs.captureVisibleTab(windowId, {
-      format: "jpeg",
-      quality: 70
+    await enqueueCapture(async () => {
+      // キュー待機中に重複呼び出し(スウィープ+受動パス)が先に保存していたら降りる
+      if (Date.now() - (lastCaptureTimes[tab.url] || 0) < MIN_CAPTURE_INTERVAL_MS) {
+        traceCapture(`skip rate-limit(queued) url=${tab.url}`);
+        return;
+      }
+      lastCaptureCallAt = Date.now();
+      // 保護されたページ等ではエラーになるのでcatchで無視する
+      const dataUrl = await browser.tabs.captureVisibleTab(windowId, {
+        format: "jpeg",
+        quality: 70
+      });
+      const thumbnail = await downscale(dataUrl);
+      await putThumbnail(tab.url, thumbnail);
+      // 成功時のみレート制限を記録する。失敗(フォーカス遷移中の一時的な
+      // "view is invisible"等)の前に記録すると、直後の正当な再試行まで10秒間
+      // ブロックされ、そのタブのサムネイルだけ欠落する
+      lastCaptureTimes[tab.url] = Date.now();
+      traceCapture(`stored url=${tab.url} bytes=${thumbnail.size} sweep=${fromSweep}`);
+      log.log(logDir, "captureActiveTab()", tab.url, thumbnail.size);
+      pruneThumbnails();
     });
-    const thumbnail = await downscale(dataUrl);
-    await putThumbnail(tab.url, thumbnail);
-    log.log(logDir, "captureActiveTab()", tab.url, thumbnail.size);
-    pruneThumbnails();
   } catch (e) {
+    traceCapture(`FAILED w=${windowId} sweep=${fromSweep} err=${e?.message}`);
     log.log(logDir, "captureActiveTab() skipped", e?.message);
   }
 };

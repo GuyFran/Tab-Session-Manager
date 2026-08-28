@@ -87,8 +87,12 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
 ## Current status (2026-08-28)
 
-- Version **7.4.27**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.28**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.28 — capture quota fix.** Chrome limits `captureVisibleTab()` to 2 calls/sec; the sweep's
+  burst (plus duplicate passive captures per tab) tripped it, losing one random thumbnail per run.
+  Captures are now serialized through a 600 ms-spaced queue and the per-URL dedupe stamp is only
+  written after a successful store. Verified 6/6 thumbnails twice consecutively.
 - **v7.4.27 — hidden-window sweep fixed (user-reported "no thumbnail, no hibernation").** When the
   restored incognito window isn't rendered (covered/minimized), Chrome neither reloads discarded
   tabs on activation nor allows `captureVisibleTab()` ("view is invisible") — the old sweep burned
