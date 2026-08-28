@@ -87,7 +87,7 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
 ## Current status (2026-08-28)
 
-- Version **7.4.24**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.25**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
 - **v7.4.24 — adversarial review of the reload/sweep path fixed four more confirmed critical
   defects** (16-agent review, every finding confirmed by 2 independent verifiers): the incognito
@@ -99,7 +99,9 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
   under `DEBUG_RESTORE_TAB_LIMIT` permanently rewrote the saved session down to the cap (tracking
   now suppressed for truncated windows). Verified in Chrome 152 including a **full
   save → kill Chrome → relaunch → reopen** incognito round-trip: session intact, 8/8 tabs, 0 blank,
-  sweep terminates (31–33 s; previously never for incognito).
+  sweep terminates (31–33 s; previously never for incognito). Incognito **thumbnail capture** was
+  verified separately the same day: 6/6 thumbnails stored during a private-session sweep, plus a
+  direct captureVisibleTab (21 KB JPEG) and the passive browse-time path — see the v7.4.25 log entry.
 - **SWEEP-01 fixed in v7.4.23 — the post-restore "load → thumbnail → hibernate" pass never worked.**
   Five faults: it never started (infinite focus wait); windows were swept in parallel; incognito
   windows were swept for nothing; placeholders never advanced to their real URL (`replacePage()` in
