@@ -87,8 +87,18 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
 ## Current status (2026-08-28)
 
-- Version **7.4.25**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.27**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.27 — hidden-window sweep fixed (user-reported "no thumbnail, no hibernation").** When the
+  restored incognito window isn't rendered (covered/minimized), Chrome neither reloads discarded
+  tabs on activation nor allows `captureVisibleTab()` ("view is invisible") — the old sweep burned
+  30 s per tab achieving nothing. Now `sweepWindow()` probes renderability per tab: hidden
+  placeholders are background-navigated (works without rendering) and discarded; hidden incognito
+  windows are deferred via `storage.session` and the sweep auto-resumes on `windows.onFocusChanged`
+  when the user focuses the window — verified: deferral registers, resume ≤4 s after focus,
+  5/6 thumbnails + re-hibernation in 16 s.
+- v7.4.26 removed the `ifSavePrivateWindow` gate from the sweep's thumbnail path
+  (`captureActiveTab(windowId, { fromSweep: true })`); the passive browse-time path keeps it.
 - **v7.4.24 — adversarial review of the reload/sweep path fixed four more confirmed critical
   defects** (16-agent review, every finding confirmed by 2 independent verifiers): the incognito
   sweep looped forever (`tabs.discard()` new-id churn defeated `processedTabIds`); the sweep-time

@@ -55,6 +55,56 @@ const isRedirectPlaceholder = tab => {
   return parameter.isReplaced && parameter.state === "redirect";
 };
 
+// 隠れている(他ウィンドウに覆われている・最小化された)ウィンドウはChromeが描画しないため、
+// captureVisibleTab()は "view is invisible" で失敗し、discard済みタブのアクティブ化も
+// 実際の再読込を起こさない(実測: bg-probe 2026-08-28)。キャプチャを1回試して判定する
+const isWindowRenderable = async windowId => {
+  try {
+    await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 10 });
+    return true;
+  } catch (e) {
+    // "view is invisible"以外(保護ページ等)は描画されているとみなす
+    return !/invisible/i.test(String(e?.message || e));
+  }
+};
+
+// 隠れたウィンドウでキャプチャできなかったスウィープを、ウィンドウがフォーカスを得たときに
+// 再実行するための記録。MV3のSWは30秒で死ぬため、storage.session(ブラウザ再起動で消える)に置く
+const DEFERRED_KEY = "deferredSweepWindowIds";
+
+const getDeferredWindowIds = async () => {
+  try {
+    const stored = await browser.storage.session.get(DEFERRED_KEY);
+    return Array.isArray(stored[DEFERRED_KEY]) ? stored[DEFERRED_KEY] : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const deferSweepWindow = async windowId => {
+  log.info(logDir, "deferSweepWindow(): window not rendered, will sweep on focus", windowId);
+  try {
+    const ids = await getDeferredWindowIds();
+    if (!ids.includes(windowId)) ids.push(windowId);
+    await browser.storage.session.set({ [DEFERRED_KEY]: ids });
+  } catch (e) {}
+};
+
+// background.jsのwindows.onFocusChangedから呼ばれる。延期していたウィンドウが
+// フォーカスされた(=描画された)タイミングでスウィープを再開する
+export const handleWindowFocusForDeferredSweep = async windowId => {
+  if (windowId == null || windowId === browser.windows.WINDOW_ID_NONE) return;
+  const ids = await getDeferredWindowIds();
+  if (!ids.includes(windowId)) return;
+  // スウィープ中は触らない。次のフォーカスで再試行される
+  if (isSweeping) return;
+  try {
+    await browser.storage.session.set({ [DEFERRED_KEY]: ids.filter(id => id !== windowId) });
+  } catch (e) {}
+  log.info(logDir, "handleWindowFocusForDeferredSweep(): resuming deferred sweep", windowId);
+  startPreloadSweep([windowId]);
+};
+
 // placeholderを開けないウィンドウ(Chromeのincognito)では、復元時にdiscard済みで生成されるため、
 // incognitoのdiscard済みタブも同じようにスウィープ対象とする
 // 通常ウィンドウのdiscard済みタブはユーザやブラウザが破棄したものなので、対象にしない
@@ -145,6 +195,35 @@ const sweepWindow = async windowId => {
 
     await waitWhileWindowFocused(windowId, focusState);
     if (shouldStop) break;
+
+    // 隠れたウィンドウではキャプチャ不能かつ、discard済みタブのアクティブ化は
+    // 再読込を起こさず30秒タイムアウトを空費するだけ(実測)。描画状態で分岐する
+    const renderable = await isWindowRenderable(windowId);
+
+    if (!renderable && !isRedirectPlaceholder(nextTab)) {
+      // incognitoのdiscard済みタブ: 隠れたままでは読み込みもキャプチャもできない。
+      // ウィンドウを延期リストに入れ、フォーカスされたときに再スウィープする
+      await deferSweepWindow(windowId);
+      processedTabIds.delete(nextTab.id);
+      break;
+    }
+
+    if (!renderable) {
+      // 隠れたウィンドウのplaceholder: アクティブ化せずにバックグラウンドで実URLへ
+      // 遷移させる(隠れたウィンドウでもupdate({url})は正常に読み込む)。
+      // サムネイルは撮れないので撮らず、読み込み完了後すぐdiscardする
+      const parameter = returnReplaceParameter(nextTab.url);
+      if (parameter.isReplaced && parameter.url) {
+        await browser.tabs
+          .update(nextTab.id, { url: parameter.url })
+          .catch(e => log.warn(logDir, "sweepWindow() bg navigate FAILED", e?.message || String(e)));
+      }
+      await waitForLoad(nextTab.id);
+      await discardProcessedTab(nextTab.id, processedTabIds);
+      if (remainingCount > 0) remainingCount--;
+      updateBadge();
+      continue;
+    }
 
     // アクティブなタブはdiscardできないため、次のタブをアクティブにしてから前のタブをdiscardする
     await browser.tabs.update(nextTab.id, { active: true }).catch(() => {});

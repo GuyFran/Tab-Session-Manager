@@ -46,7 +46,8 @@ import {
   startPreloadSweep,
   stopPreloadSweep,
   getPreloadSweepStatus,
-  getSweepingWindowId
+  getSweepingWindowId,
+  handleWindowFocusForDeferredSweep
 } from "./preloadSweep";
 import { getRestoreDebug, downloadRestoreDebug } from "./restoreDebug";
 
@@ -260,6 +261,8 @@ browser.runtime.onMessage.addListener(onMessageListener);
 browser.commands.onCommand.addListener(onCommandListener);
 browser.tabs.onActivated.addListener(handleReplace);
 browser.windows.onFocusChanged.addListener(handleReplace);
+// 隠れていてキャプチャできず延期したウィンドウを、フォーカスされたときに再スウィープする
+browser.windows.onFocusChanged.addListener(handleWindowFocusForDeferredSweep);
 browser.tabs.onUpdated.addListener(handleTabUpdated);
 browser.tabs.onUpdated.addListener(onThumbnailTabUpdatedListener);
 browser.tabs.onActivated.addListener(onThumbnailTabActivatedListener);
