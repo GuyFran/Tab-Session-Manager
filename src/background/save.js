@@ -5,6 +5,7 @@ import log from "loglevel";
 import Sessions from "./sessions.js";
 import { getSettings } from "src/settings/settings";
 import { returnReplaceParameter } from "./replace.js";
+import { returnIncognitoPlaceholderParameter } from "./incognitoPlaceholder.js";
 import ignoreUrls from "./ignoreUrls";
 import { pushRemovedQueue, syncCloudAuto } from "./cloudSync.js";
 import { getValidatedTag } from "./tag.js";
@@ -59,6 +60,14 @@ export async function loadCurrentSession(name, tag, property) {
     const parameter = returnReplaceParameter(tab.url);
     if (parameter.isReplaced) {
       tab.url = parameter.url;
+    }
+
+    // incognitoのdata:URLプレースホルダなら実URL・タイトル・faviconを保存
+    const incognitoParameter = returnIncognitoPlaceholderParameter(tab.url);
+    if (incognitoParameter.isIncognitoPlaceholder) {
+      tab.url = incognitoParameter.url;
+      if (incognitoParameter.title) tab.title = incognitoParameter.title;
+      if (incognitoParameter.favIconUrl) tab.favIconUrl = incognitoParameter.favIconUrl;
     }
 
     // Compress favicon url

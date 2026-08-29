@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import moment from "moment";
 import log from "loglevel";
 import { returnReplaceParameter } from "src/background/replace.js";
+import { returnIncognitoPlaceholderParameter } from "src/background/incognitoPlaceholder.js";
 import { queryTabGroups, isEnabledTabGroups } from "../../common/tabGroups";
 import { getSettings } from "src/settings/settings";
 import { compressDataUrl } from "../../common/compressDataUrl";
@@ -166,6 +167,14 @@ export const addCurrentWindow = async (id, isTracking = false) => {
     const replacedParams = returnReplaceParameter(tab.url);
     if (replacedParams.isReplaced) {
       tab.url = replacedParams.url;
+    }
+
+    // incognitoのdata:URLプレースホルダなら実URLを保存
+    const incognitoParams = returnIncognitoPlaceholderParameter(tab.url);
+    if (incognitoParams.isIncognitoPlaceholder) {
+      tab.url = incognitoParams.url;
+      if (incognitoParams.title) tab.title = incognitoParams.title;
+      if (incognitoParams.favIconUrl) tab.favIconUrl = incognitoParams.favIconUrl;
     }
 
     // Compress favicon url

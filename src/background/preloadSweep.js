@@ -2,9 +2,13 @@ import browser from "webextension-polyfill";
 import log from "loglevel";
 import { getSettings } from "src/settings/settings";
 import { returnReplaceParameter } from "./replace";
-import { captureActiveTab } from "./thumbnails";
+import { captureActiveTab, getThumbnailDataUrl } from "./thumbnails";
 import { showBadge, hideBadge } from "./setBadge";
 import { addSweepDebugEvent } from "./restoreDebug";
+import {
+  buildIncognitoPlaceholderUrl,
+  isIncognitoPlaceholderUrl
+} from "./incognitoPlaceholder";
 
 const logDir = "background/preloadSweep";
 
@@ -142,7 +146,10 @@ export const handleWindowFocusForDeferredSweep = async windowId => {
 // placeholderを開けないウィンドウ(Chromeのincognito)では、復元時にdiscard済みで生成されるため、
 // incognitoのdiscard済みタブも同じようにスウィープ対象とする
 // 通常ウィンドウのdiscard済みタブはユーザやブラウザが破棄したものなので、対象にしない
-const isSweepTarget = tab => isRedirectPlaceholder(tab) || (tab.incognito && tab.discarded);
+// スウィープ済みのdata:URLプレースホルダは完成形なので再処理しない(しないと無限再処理)
+const isSweepTarget = tab =>
+  isRedirectPlaceholder(tab) ||
+  (tab.incognito && tab.discarded && !isIncognitoPlaceholderUrl(tab.url));
 
 // ユーザが操作中のウィンドウには干渉しないよう、フォーカスが外れるのを少しだけ待つ
 // 復元直後のウィンドウはフォーカスされたままなので、無期限に待つとスウィープが永久に
@@ -197,6 +204,46 @@ const waitForLoad = async tabId => {
 const discardProcessedTab = async (tabId, processedTabIds) => {
   const discardedTab = await browser.tabs.discard(tabId).catch(() => null);
   if (discardedTab?.id != null) processedTabIds.add(discardedTab.id);
+};
+
+// incognitoタブを実URLのままdiscardすると、次のアクティブ化で即座に実ページが
+// 再読込されてサムネイルの出番が無い(ユーザ報告)。キャプチャ済みサムネイルを
+// 埋め込んだdata:URLプレースホルダに差し替えてからdiscardする。
+// tabs.update()はdata:URLを黙って無視するため「新規作成→旧タブ削除」で差し替える
+const swapToPlaceholderAndDiscard = async (tabId, processedTabIds) => {
+  const tab = await browser.tabs.get(tabId).catch(() => null);
+  if (!tab) return;
+  if (!tab.incognito || isIncognitoPlaceholderUrl(tab.url) || !/^https?:/.test(tab.url || "")) {
+    await discardProcessedTab(tabId, processedTabIds);
+    return;
+  }
+  const thumbDataUrl = await getThumbnailDataUrl(tab.url);
+  const placeholderUrl = buildIncognitoPlaceholderUrl({
+    url: tab.url,
+    title: tab.title,
+    favIconUrl: tab.favIconUrl,
+    thumbDataUrl: thumbDataUrl
+  });
+  const placeholderTab = await browser.tabs
+    .create({ windowId: tab.windowId, index: tab.index, url: placeholderUrl, active: false })
+    .catch(e => {
+      log.warn(logDir, "swapToPlaceholderAndDiscard() create failed", e?.message || String(e));
+      return null;
+    });
+  if (!placeholderTab) {
+    await discardProcessedTab(tabId, processedTabIds);
+    return;
+  }
+  processedTabIds.add(placeholderTab.id);
+  await browser.tabs.remove(tabId).catch(() => {});
+  // data:ページのURL確定を待ってからdiscardする
+  await sleep(300);
+  await discardProcessedTab(placeholderTab.id, processedTabIds);
+  addSweepDebugEvent("sweep-tab-swapped", {
+    oldTabId: tabId,
+    placeholderTabId: placeholderTab.id,
+    hasThumbnail: !!thumbDataUrl
+  });
 };
 
 const sweepWindow = async windowId => {
@@ -263,9 +310,9 @@ const sweepWindow = async windowId => {
       continue;
     }
 
-    // アクティブなタブはdiscardできないため、次のタブをアクティブにしてから前のタブをdiscardする
+    // アクティブなタブはdiscardできないため、次のタブをアクティブにしてから前のタブを処理する
     await browser.tabs.update(nextTab.id, { active: true }).catch(() => {});
-    if (previousTabId != null) await discardProcessedTab(previousTabId, processedTabIds);
+    if (previousTabId != null) await swapToPlaceholderAndDiscard(previousTabId, processedTabIds);
 
     // placeholderは対象タブを直接実URLへ遷移させる。replacePage()はアクティブタブを
     // 問い合わせてsetTimeoutで再試行する作りのため、スウィープのループ内では
@@ -292,12 +339,12 @@ const sweepWindow = async windowId => {
     updateBadge();
   }
 
-  // 元のアクティブタブに戻し、最後に処理したタブをdiscardする
+  // 元のアクティブタブに戻し、最後に処理したタブを処理する
   if (originalActiveTab) {
     await browser.tabs.update(originalActiveTab.id, { active: true }).catch(() => {});
   }
   if (previousTabId != null && previousTabId !== originalActiveTab?.id) {
-    browser.tabs.discard(previousTabId).catch(() => {});
+    await swapToPlaceholderAndDiscard(previousTabId, processedTabIds).catch(() => {});
   }
   currentSweepWindowId = null;
 };

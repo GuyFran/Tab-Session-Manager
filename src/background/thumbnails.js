@@ -212,6 +212,31 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
   }
 };
 
+// 保存済みサムネイルをdata URIで返す(無ければ空文字)。incognitoのdata:URL
+// プレースホルダに埋め込むために使う
+export const getThumbnailDataUrl = async url => {
+  try {
+    const db = await openDB();
+    const record = await new Promise((resolve, reject) => {
+      const request = db
+        .transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME)
+        .get(url);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = e => reject(e);
+    });
+    if (!record || !record.blob) return "";
+    const buffer = new Uint8Array(await record.blob.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < buffer.length; i += 8192) {
+      binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+    }
+    return "data:image/jpeg;base64," + btoa(binary);
+  } catch (e) {
+    return "";
+  }
+};
+
 export const handleThumbnailTabUpdated = (tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete" || !tab.active) return;
   // 描画完了を待ってからキャプチャする
