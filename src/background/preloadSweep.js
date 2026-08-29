@@ -210,10 +210,14 @@ const discardProcessedTab = async (tabId, processedTabIds) => {
 // 再読込されてサムネイルの出番が無い(ユーザ報告)。キャプチャ済みサムネイルを
 // 埋め込んだdata:URLプレースホルダに差し替えてからdiscardする。
 // tabs.update()はdata:URLを黙って無視するため「新規作成→旧タブ削除」で差し替える
-const swapToPlaceholderAndDiscard = async (tabId, processedTabIds) => {
+const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabIds) => {
   const tab = await browser.tabs.get(tabId).catch(() => null);
   if (!tab) return;
-  if (!tab.incognito || isIncognitoPlaceholderUrl(tab.url) || !/^https?:/.test(tab.url || "")) {
+  // 読み込みが完了しなかったタブ(隠れたウィンドウでの空振り等)をplaceholderに
+  // してしまうと、サムネイル無しのまま以後のスウィープ対象から外れて固定される。
+  // 完了タブだけ差し替え、未完了タブは素のdiscardに留めて再スウィープに委ねる
+  const completed = completedTabIds?.has(tabId);
+  if (!completed || !tab.incognito || isIncognitoPlaceholderUrl(tab.url) || !/^https?:/.test(tab.url || "")) {
     await discardProcessedTab(tabId, processedTabIds);
     return;
   }
@@ -265,6 +269,8 @@ const sweepWindow = async windowId => {
 
   // 処理済みのタブは再度スウィープ対象の状態に戻るため、明示的に記録して二度処理しない
   const processedTabIds = new Set();
+  // 読み込みが完了した(=placeholderへ差し替えてよい)タブ
+  const completedTabIds = new Set();
   const focusState = { skipWait: false };
   let previousTabId = null;
   // 万一idの追跡が破れても暴走しないよう、反復回数に上限を設ける
@@ -322,7 +328,7 @@ const sweepWindow = async windowId => {
 
     // アクティブなタブはdiscardできないため、次のタブをアクティブにしてから前のタブを処理する
     await browser.tabs.update(nextTab.id, { active: true }).catch(() => {});
-    if (previousTabId != null) await swapToPlaceholderAndDiscard(previousTabId, processedTabIds);
+    if (previousTabId != null) await swapToPlaceholderAndDiscard(previousTabId, processedTabIds, completedTabIds);
 
     // placeholderは対象タブを直接実URLへ遷移させる。replacePage()はアクティブタブを
     // 問い合わせてsetTimeoutで再試行する作りのため、スウィープのループ内では
@@ -342,10 +348,23 @@ const sweepWindow = async windowId => {
     const loadedTab = await waitForLoad(nextTab.id);
     addSweepDebugEvent("sweep-tab-loaded", { tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
     if (loadedTab && loadedTab.status === "complete") {
+      completedTabIds.add(nextTab.id);
       await sleep(RENDER_DELAY_MS);
       addSweepDebugEvent("sweep-step", { step: "capture-start", tabId: nextTab.id });
-      await captureActiveTab(windowId, { fromSweep: true });
+      // フォーカス直後の最初のタブはステータスの揺り戻しで1回目のキャプチャが
+      // 落ちやすく、スウィープはこの後タブをplaceholderに差し替えてしまうため
+      // 二度と撮れない。保存を確認できるまで数回粘る
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await captureActiveTab(windowId, { fromSweep: true });
+        const stored = !!(loadedTab.url && (await getThumbnailDataUrl(loadedTab.url)));
+        addSweepDebugEvent("sweep-step", { step: "capture-retry", tabId: nextTab.id, attempt, stored });
+        if (stored) break;
+        if (shouldStop) break;
+        await sleep(700);
+      }
       addSweepDebugEvent("sweep-step", { step: "capture-done", tabId: nextTab.id });
+    } else {
+      addSweepDebugEvent("sweep-step", { step: "capture-skipped", tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
     }
     previousTabId = nextTab.id;
     if (remainingCount > 0) remainingCount--;
@@ -357,7 +376,7 @@ const sweepWindow = async windowId => {
     await browser.tabs.update(originalActiveTab.id, { active: true }).catch(() => {});
   }
   if (previousTabId != null && previousTabId !== originalActiveTab?.id) {
-    await swapToPlaceholderAndDiscard(previousTabId, processedTabIds).catch(() => {});
+    await swapToPlaceholderAndDiscard(previousTabId, processedTabIds, completedTabIds).catch(() => {});
   }
   currentSweepWindowId = null;
 };

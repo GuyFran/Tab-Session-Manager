@@ -62,18 +62,21 @@ export const buildIncognitoPlaceholderUrl = ({ url, title, favIconUrl = "", thum
     safeTitle +
     " · hibernated</title>" +
     icon +
+    // サムネイルはビューポートほぼ全面(下部の細いバーを除く)に表示する。
+    // 画像なしの場合はバーだけが中央に来る(justify-content:center)
     "<style>html,body{margin:0;height:100%;background:rgb(29,29,36);color:rgb(227,230,236);font:14px system-ui,sans-serif}" +
-    ".w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;box-sizing:border-box}" +
-    "img{width:min(94%,1400px);max-height:76%;object-fit:contain;border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.55);cursor:pointer}" +
-    "h2{margin:0;font-weight:500;max-width:88%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
-    "button{font:15px system-ui,sans-serif;padding:10px 26px;border:0;border-radius:8px;background:rgb(13,148,136);color:rgb(255,255,255);cursor:pointer}" +
+    ".w{height:100%;display:flex;flex-direction:column;justify-content:center}" +
+    "img{flex:1 1 auto;min-height:0;width:100%;object-fit:contain;cursor:pointer;background:rgb(22,22,28)}" +
+    ".b{display:flex;align-items:center;gap:14px;padding:10px 16px}" +
+    "h2{flex:1;margin:0;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    "button{font:15px system-ui,sans-serif;padding:9px 24px;border:0;border-radius:8px;background:rgb(13,148,136);color:rgb(255,255,255);cursor:pointer;white-space:nowrap}" +
     "button:hover{background:rgb(15,118,110)}" +
-    "p{margin:0;opacity:.5;font-size:12px}</style>" +
+    "p{margin:0;opacity:.5;font-size:12px;white-space:nowrap}</style>" +
     '<body><div class="w">' +
     img +
-    "<h2>" +
+    '<div class="b"><h2>' +
     safeTitle +
-    "</h2><button>Open page</button><p>Hibernated — click the button or the image to load</p></div>" +
+    "</h2><p>Hibernated — click the image to load</p><button>Open page</button></div></div>" +
     // 自動では遷移しない(ユーザ要望)。ボタンかサムネイルのクリック、またはEnterで
     // 実URLへ遷移する
     "<scr" +
