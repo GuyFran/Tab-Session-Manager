@@ -4,6 +4,7 @@ import { getSettings } from "src/settings/settings";
 import { returnReplaceParameter } from "./replace";
 import { captureActiveTab } from "./thumbnails";
 import { showBadge, hideBadge } from "./setBadge";
+import { addSweepDebugEvent } from "./restoreDebug";
 
 const logDir = "background/preloadSweep";
 
@@ -68,6 +69,21 @@ const isWindowRenderable = async windowId => {
   }
 };
 
+// フォーカス直後はChromeの描画がまだ追いつかず、一発判定だと focused なのに
+// "invisible" が返ることがある(実測: 延期→再開→即再延期のデッドロック)。
+// 描画が立ち上がるまで少し粘って判定する
+const RENDERABLE_WAIT_MS = 8 * 1000;
+const RENDERABLE_POLL_MS = 700;
+const waitForRenderable = async windowId => {
+  const deadline = Date.now() + RENDERABLE_WAIT_MS;
+  while (!shouldStop) {
+    if (await isWindowRenderable(windowId)) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(RENDERABLE_POLL_MS);
+  }
+  return false;
+};
+
 // 隠れたウィンドウでキャプチャできなかったスウィープを、ウィンドウがフォーカスを得たときに
 // 再実行するための記録。MV3のSWは30秒で死ぬため、storage.session(ブラウザ再起動で消える)に置く
 const DEFERRED_KEY = "deferredSweepWindowIds";
@@ -81,13 +97,24 @@ const getDeferredWindowIds = async () => {
   }
 };
 
+const DEFERRED_RETRY_MS = 3000;
+
 const deferSweepWindow = async windowId => {
   log.info(logDir, "deferSweepWindow(): window not rendered, will sweep on focus", windowId);
+  addSweepDebugEvent("sweep-window-deferred", { windowId });
   try {
     const ids = await getDeferredWindowIds();
     if (!ids.includes(windowId)) ids.push(windowId);
     await browser.storage.session.set({ [DEFERRED_KEY]: ids });
   } catch (e) {}
+  // 既にフォーカスされているウィンドウを延期すると、onFocusChangedは二度と発火せず
+  // 再開の契機が失われる(実測デッドロック)。フォーカス中ならタイマーで自前再試行する
+  const window = await browser.windows.get(windowId).catch(() => null);
+  if (window?.focused) {
+    setTimeout(() => {
+      handleWindowFocusForDeferredSweep(windowId).catch(() => {});
+    }, DEFERRED_RETRY_MS);
+  }
 };
 
 // background.jsのwindows.onFocusChangedから呼ばれる。延期していたウィンドウが
@@ -96,12 +123,19 @@ export const handleWindowFocusForDeferredSweep = async windowId => {
   if (windowId == null || windowId === browser.windows.WINDOW_ID_NONE) return;
   const ids = await getDeferredWindowIds();
   if (!ids.includes(windowId)) return;
-  // スウィープ中は触らない。次のフォーカスで再試行される
-  if (isSweeping) return;
+  // スウィープ中は触らない。フォーカスイベントはもう来ないかもしれないので、
+  // タイマーで自前再試行する
+  if (isSweeping) {
+    setTimeout(() => {
+      handleWindowFocusForDeferredSweep(windowId).catch(() => {});
+    }, DEFERRED_RETRY_MS);
+    return;
+  }
   try {
     await browser.storage.session.set({ [DEFERRED_KEY]: ids.filter(id => id !== windowId) });
   } catch (e) {}
   log.info(logDir, "handleWindowFocusForDeferredSweep(): resuming deferred sweep", windowId);
+  addSweepDebugEvent("sweep-deferred-resume", { windowId });
   startPreloadSweep([windowId]);
 };
 
@@ -139,6 +173,7 @@ const shouldSweepWindow = async windowId => {
   // ユーザが復元した以上、サムネイルを撮る意味がある
   if (!getSettings("ifCaptureThumbnails")) {
     log.info(logDir, "shouldSweepWindow() skipping incognito window (thumbnails off)", windowId);
+    addSweepDebugEvent("sweep-window-skip", { windowId, reason: "ifCaptureThumbnails-off" });
     return false;
   }
   return true;
@@ -183,6 +218,7 @@ const sweepWindow = async windowId => {
   while (!shouldStop) {
     if (++iterationCount > maxIterations) {
       log.warn(logDir, "sweepWindow() iteration cap reached", windowId, maxIterations);
+      addSweepDebugEvent("sweep-iteration-cap", { windowId, maxIterations });
       break;
     }
     const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => null);
@@ -198,7 +234,8 @@ const sweepWindow = async windowId => {
 
     // 隠れたウィンドウではキャプチャ不能かつ、discard済みタブのアクティブ化は
     // 再読込を起こさず30秒タイムアウトを空費するだけ(実測)。描画状態で分岐する
-    const renderable = await isWindowRenderable(windowId);
+    const renderable = await waitForRenderable(windowId);
+    addSweepDebugEvent("sweep-renderable-check", { windowId, tabId: nextTab.id, renderable });
 
     if (!renderable && !isRedirectPlaceholder(nextTab)) {
       // incognitoのdiscard済みタブ: 隠れたままでは読み込みもキャプチャもできない。
@@ -218,7 +255,8 @@ const sweepWindow = async windowId => {
           .update(nextTab.id, { url: parameter.url })
           .catch(e => log.warn(logDir, "sweepWindow() bg navigate FAILED", e?.message || String(e)));
       }
-      await waitForLoad(nextTab.id);
+      const bgLoaded = await waitForLoad(nextTab.id);
+      addSweepDebugEvent("sweep-tab-bg-processed", { tabId: nextTab.id, status: bgLoaded?.status || "gone" });
       await discardProcessedTab(nextTab.id, processedTabIds);
       if (remainingCount > 0) remainingCount--;
       updateBadge();
@@ -244,6 +282,7 @@ const sweepWindow = async windowId => {
       }
     }
     const loadedTab = await waitForLoad(nextTab.id);
+    addSweepDebugEvent("sweep-tab-loaded", { tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
     if (loadedTab && loadedTab.status === "complete") {
       await sleep(RENDER_DELAY_MS);
       await captureActiveTab(windowId, { fromSweep: true });
@@ -277,6 +316,7 @@ export const startPreloadSweep = async windowIds => {
       windowIds = windows.filter(window => window.type === "normal").map(window => window.id);
     }
     log.info(logDir, "startPreloadSweep()", windowIds);
+    addSweepDebugEvent("sweep-start", { windowIds: String(windowIds) });
 
     remainingCount = 0;
     const sweepableWindowIds = [];
@@ -292,9 +332,15 @@ export const startPreloadSweep = async windowIds => {
     // 無意味になるため、ウィンドウも1つずつ順番に処理する
     for (const windowId of sweepableWindowIds) {
       if (shouldStop) break;
-      await sweepWindow(windowId).catch(e => log.error(logDir, "sweepWindow()", e));
+      addSweepDebugEvent("sweep-window-start", { windowId });
+      await sweepWindow(windowId).catch(e => {
+        log.error(logDir, "sweepWindow()", e);
+        addSweepDebugEvent("sweep-window-error", { windowId, error: e?.message || String(e) });
+      });
+      addSweepDebugEvent("sweep-window-finished", { windowId });
     }
     log.info(logDir, "=>startPreloadSweep() finished");
+    addSweepDebugEvent("sweep-finished", {});
   } finally {
     // 途中で失敗してもスウィープ中の状態が残らないようにする
     remainingCount = 0;

@@ -98,7 +98,33 @@ export default class RestoreDebugPage extends Component {
             value={summary.blankTabs}
             warning={summary.blankTabs > 0}
           />
+          <SummaryItem label="Thumbs stored" value={summary.thumbStored} />
+          <SummaryItem
+            label="Thumb failures"
+            value={summary.thumbFailed}
+            warning={summary.thumbFailed > 0}
+          />
+          <SummaryItem label="Thumb skipped" value={summary.thumbSkipped} />
+          <SummaryItem
+            label="Sweeps deferred"
+            value={summary.sweepDeferred}
+            warning={summary.sweepDeferred > 0}
+          />
         </section>
+
+        {summary.lastThumbError && (
+          <div className="restoreError">
+            Last thumbnail failure: {summary.lastThumbError}
+          </div>
+        )}
+
+        {summary.sweepDeferred > 0 && (
+          <div className="restoreError">
+            The restored window was not visible, so thumbnails could not be captured
+            (Chrome refuses to render hidden windows). The sweep will resume automatically
+            the next time that window is focused — bring it to the front and keep it visible.
+          </div>
+        )}
 
         {summary.blankTabs > 0 && (
           <div className="restoreError">

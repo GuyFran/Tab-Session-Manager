@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import log from "loglevel";
 import { getSettings } from "src/settings/settings";
+import { addSweepDebugEvent } from "./restoreDebug";
 
 const logDir = "background/thumbnails";
 
@@ -129,13 +130,15 @@ const downscale = async dataUrl => {
 let lastCaptureTimes = {};
 
 // キャプチャの成否と理由の軽量トレース(直近200件)。デバッグ時にSWコンソールで
-// globalThis.__thumbLog を見る
-const traceCapture = entry => {
+// globalThis.__thumbLog を見る。URLは一切載せない(tabId・理由・サイズのみ)。
+// 同じ内容をデバッグパネル(restoreDebug)にも流す
+const traceCapture = (entry, debugEvent, debugDetails) => {
   try {
     const buf = (globalThis.__thumbLog = globalThis.__thumbLog || []);
     buf.push(`${new Date().toISOString().slice(11, 23)} ${entry}`);
     if (buf.length > 200) buf.shift();
   } catch (e) {}
+  if (debugEvent) addSweepDebugEvent(debugEvent, debugDetails);
 };
 
 // ChromeはcaptureVisibleTab()を「2回/秒」に制限している
@@ -162,22 +165,29 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
     if (!getSettings("ifCaptureThumbnails")) return;
     const [tab] = await browser.tabs.query({ active: true, windowId: windowId });
     if (!tab || !isCapturableUrl(tab.url) || tab.status !== "complete") {
-      traceCapture(`skip pre-check w=${windowId} sweep=${fromSweep} url=${tab?.url} status=${tab?.status}`);
+      traceCapture(`skip pre-check w=${windowId} tab=${tab?.id} sweep=${fromSweep} status=${tab?.status}`, "thumb-skip", { reason: "pre-check", windowId, tabId: tab?.id, status: tab?.status, fromSweep });
       return;
     }
     // 受動キャプチャ: プライベート保存設定がオフならスキップ
     // スウィープ経由: 復元済みタブなのでifSavePrivateWindowに関係なくキャプチャする
-    if (tab.incognito && !fromSweep && !getSettings("ifSavePrivateWindow")) return;
+    if (tab.incognito && !fromSweep && !getSettings("ifSavePrivateWindow")) {
+      traceCapture(`skip private-gate tab=${tab.id}`, "thumb-skip", {
+        reason: "private-gate-ifSavePrivateWindow-off",
+        tabId: tab.id,
+        fromSweep
+      });
+      return;
+    }
 
     if (Date.now() - (lastCaptureTimes[tab.url] || 0) < MIN_CAPTURE_INTERVAL_MS) {
-      traceCapture(`skip rate-limit url=${tab.url}`);
+      traceCapture(`skip rate-limit tab=${tab.id}`, "thumb-skip", { reason: "rate-limit", tabId: tab.id, fromSweep });
       return;
     }
 
     await enqueueCapture(async () => {
       // キュー待機中に重複呼び出し(スウィープ+受動パス)が先に保存していたら降りる
       if (Date.now() - (lastCaptureTimes[tab.url] || 0) < MIN_CAPTURE_INTERVAL_MS) {
-        traceCapture(`skip rate-limit(queued) url=${tab.url}`);
+        traceCapture(`skip rate-limit(queued) tab=${tab.id}`, "thumb-skip", { reason: "rate-limit-queued", tabId: tab.id, fromSweep });
         return;
       }
       lastCaptureCallAt = Date.now();
@@ -192,12 +202,12 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
       // "view is invisible"等)の前に記録すると、直後の正当な再試行まで10秒間
       // ブロックされ、そのタブのサムネイルだけ欠落する
       lastCaptureTimes[tab.url] = Date.now();
-      traceCapture(`stored url=${tab.url} bytes=${thumbnail.size} sweep=${fromSweep}`);
+      traceCapture(`stored tab=${tab.id} bytes=${thumbnail.size} sweep=${fromSweep}`, "thumb-stored", { tabId: tab.id, bytes: thumbnail.size, fromSweep });
       log.log(logDir, "captureActiveTab()", tab.url, thumbnail.size);
       pruneThumbnails();
     });
   } catch (e) {
-    traceCapture(`FAILED w=${windowId} sweep=${fromSweep} err=${e?.message}`);
+    traceCapture(`FAILED w=${windowId} sweep=${fromSweep} err=${e?.message}`, "thumb-failed", { windowId, fromSweep, error: e?.message || String(e) });
     log.log(logDir, "captureActiveTab() skipped", e?.message);
   }
 };

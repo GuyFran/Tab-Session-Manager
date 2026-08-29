@@ -31,10 +31,63 @@ const broadcast = () => {
   }, 75);
 };
 
+// どのイベントにもURLを載せない方針の防波堤。詳細値にURLらしき文字列が
+// 紛れ込んでも記録前に潰す
+const sanitizeDetails = details => {
+  const sanitized = {};
+  for (const [key, value] of Object.entries(details)) {
+    sanitized[key] =
+      typeof value === "string"
+        ? value.replace(/(?:https?|file|ftp|chrome-extension|chrome|about|data):[^\s"']*/gi, "<url>")
+        : value;
+  }
+  return sanitized;
+};
+
+const makeDefaultSummary = (windows = [], totalTabs = 0) => ({
+  savedWindows: windows,
+  savedTabCount: totalTabs,
+  totalTabs: 0,
+  createdWindowCount: 0,
+  configuredBatchSize: null,
+  totalBatches: 0,
+  currentBatch: 0,
+  finishedBatches: 0,
+  createdTabs: 0,
+  finishedTabs: 0,
+  failedTabs: 0,
+  discardedTabs: 0,
+  discardSkippedTabs: 0,
+  discardErrors: 0,
+  blankTabs: 0,
+  urlCommitTimeouts: 0,
+  debugTabLimit: null,
+  debugSkippedTabs: 0,
+  restoreError: null,
+  thumbStored: 0,
+  thumbFailed: 0,
+  thumbSkipped: 0,
+  sweepDeferred: 0,
+  lastThumbError: null
+});
+
 const updateSummary = event => {
   if (!activeRestoreDebug) return;
   const summary = activeRestoreDebug.summary;
   switch (event.event) {
+    case "thumb-stored":
+      summary.thumbStored = (summary.thumbStored || 0) + 1;
+      break;
+    case "thumb-failed":
+      summary.thumbFailed = (summary.thumbFailed || 0) + 1;
+      summary.lastThumbError = event.error || "unknown";
+      break;
+    case "thumb-skip":
+      summary.thumbSkipped = (summary.thumbSkipped || 0) + 1;
+      break;
+    case "sweep-window-deferred":
+      summary.sweepDeferred = (summary.sweepDeferred || 0) + 1;
+      break;
     case "restore-routing":
       activeRestoreDebug.phase = "restoring";
       summary.effectiveProperty = event.effectiveProperty;
@@ -117,6 +170,42 @@ browser.windows.onRemoved.addListener(windowId => {
   if (windowId === debugWindowId) debugWindowId = null;
 });
 
+const appendEvent = (eventName, details = {}) => {
+  if (!activeRestoreDebug || activeRestoreDebug.events.length >= MAX_EVENTS) return;
+  const event = {
+    at: new Date().toISOString(),
+    event: eventName,
+    ...details
+  };
+  activeRestoreDebug.events.push(event);
+  updateSummary(event);
+  broadcast();
+};
+
+// スウィープや延期再開はSW再起動後(復元セッションのデバッグがメモリから消えた後)にも
+// 走る。デバッグセッションが無ければスウィープ専用のものを遅延生成する。
+// 新しいウィンドウは開かない — 開いたままのデバッグパネルが1秒ポーリングで拾う
+const ensureDebugSession = () => {
+  if (activeRestoreDebug) return;
+  const manifest = browser.runtime.getManifest();
+  activeRestoreDebug = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    phase: "sweep",
+    startedAt: new Date().toISOString(),
+    extensionVersion: manifest.version,
+    extensionId: browser.runtime.id,
+    requestedProperty: "(post-restore sweep)",
+    summary: makeDefaultSummary(),
+    events: []
+  };
+};
+
+// スウィープ/サムネイル側からデバッグパネルへイベントを送る入口。URLは記録しない
+export const addSweepDebugEvent = (eventName, details = {}) => {
+  ensureDebugSession();
+  appendEvent(eventName, sanitizeDetails(details));
+};
+
 export const createRestoreDebug = (session, property) => {
   const manifest = browser.runtime.getManifest();
   const windows = Object.values(session.windows).map(tabs => {
@@ -135,41 +224,11 @@ export const createRestoreDebug = (session, property) => {
     extensionVersion: manifest.version,
     extensionId: browser.runtime.id,
     requestedProperty: property,
-    summary: {
-      savedWindows: windows,
-      savedTabCount: totalTabs,
-      totalTabs: 0,
-      createdWindowCount: 0,
-      configuredBatchSize: null,
-      totalBatches: 0,
-      currentBatch: 0,
-      finishedBatches: 0,
-      createdTabs: 0,
-      finishedTabs: 0,
-      failedTabs: 0,
-      discardedTabs: 0,
-      discardSkippedTabs: 0,
-      discardErrors: 0,
-      blankTabs: 0,
-      urlCommitTimeouts: 0,
-      debugTabLimit: null,
-      debugSkippedTabs: 0,
-      restoreError: null
-    },
+    summary: makeDefaultSummary(windows, totalTabs),
     events: []
   };
 
-  const add = (eventName, details = {}) => {
-    if (!activeRestoreDebug || activeRestoreDebug.events.length >= MAX_EVENTS) return;
-    const event = {
-      at: new Date().toISOString(),
-      event: eventName,
-      ...details
-    };
-    activeRestoreDebug.events.push(event);
-    updateSummary(event);
-    broadcast();
-  };
+  const add = appendEvent;
 
   add("restore-start", {
     extensionVersion: manifest.version,
