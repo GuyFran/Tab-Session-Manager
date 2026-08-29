@@ -85,10 +85,11 @@ banner and the trace carries one `debug-tab-limit` event plus one `debug-tab-lim
 per capped window. Since v7.4.24, a window the cap truncated is NOT tracked, so a tracked session
 cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
-## Current status (2026-08-28)
+## Current status (2026-08-29)
 
-- Version **7.4.28**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.30** (7.4.29 = code, 7.4.30 = docs); dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.29 — debug panel now traces the whole thumbnail pipeline (URL-free)** — thumb stored/failed/skipped tiles, sweep lifecycle events, deferred-sweep banner; plus a fix for the resume deadlock the tracing exposed (renderability polled up to 8 s, timer retry when the deferred window is already focused). Verified 6/6 with a clean URL-leak check.
 - **v7.4.28 — capture quota fix.** Chrome limits `captureVisibleTab()` to 2 calls/sec; the sweep's
   burst (plus duplicate passive captures per tab) tripped it, losing one random thumbnail per run.
   Captures are now serialized through a 600 ms-spaced queue and the per-URL dedupe stamp is only
