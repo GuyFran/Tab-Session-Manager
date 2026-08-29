@@ -9,7 +9,9 @@ const DB_NAME = "thumbnails";
 const STORE_NAME = "thumbnails";
 const MAX_THUMBNAILS = 3000;
 const PRUNE_CHUNK = 100;
-const CAPTURE_WIDTH = 500;
+// v7.4.32: 500→920。placeholderでほぼ全幅表示するようになったため、
+// 500pxでは引き伸ばしでぼやける
+const CAPTURE_WIDTH = 920;
 const MIN_CAPTURE_INTERVAL_MS = 10 * 1000;
 const CAPTURE_DELAY_MS = 500;
 

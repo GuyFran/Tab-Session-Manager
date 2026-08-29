@@ -217,7 +217,9 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds) => {
     await discardProcessedTab(tabId, processedTabIds);
     return;
   }
+  addSweepDebugEvent("sweep-step", { step: "swap-start", tabId });
   const thumbDataUrl = await getThumbnailDataUrl(tab.url);
+  addSweepDebugEvent("sweep-step", { step: "swap-thumb-read", tabId });
   const placeholderUrl = buildIncognitoPlaceholderUrl({
     url: tab.url,
     title: tab.title,
@@ -235,7 +237,15 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds) => {
     return;
   }
   processedTabIds.add(placeholderTab.id);
+  // 新規作成タブは元タブのタブグループから外れて生まれるため、明示的に戻す
+  // (tabs.group()は"tabs"権限のみで使える。Firefoxには存在しないのでガード)
+  if (tab.groupId != null && tab.groupId > -1 && browser.tabs.group) {
+    await browser.tabs
+      .group({ tabIds: [placeholderTab.id], groupId: tab.groupId })
+      .catch(e => log.warn(logDir, "swapToPlaceholderAndDiscard() regroup failed", e?.message));
+  }
   await browser.tabs.remove(tabId).catch(() => {});
+  addSweepDebugEvent("sweep-step", { step: "swap-removed", tabId });
   // data:ページのURL確定を待ってからdiscardする
   await sleep(300);
   await discardProcessedTab(placeholderTab.id, processedTabIds);
@@ -328,11 +338,14 @@ const sweepWindow = async windowId => {
           .catch(e => log.warn(logDir, "sweepWindow() navigate FAILED", e?.message || String(e)));
       }
     }
+    addSweepDebugEvent("sweep-step", { step: "wait-load-start", tabId: nextTab.id });
     const loadedTab = await waitForLoad(nextTab.id);
     addSweepDebugEvent("sweep-tab-loaded", { tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
     if (loadedTab && loadedTab.status === "complete") {
       await sleep(RENDER_DELAY_MS);
+      addSweepDebugEvent("sweep-step", { step: "capture-start", tabId: nextTab.id });
       await captureActiveTab(windowId, { fromSweep: true });
+      addSweepDebugEvent("sweep-step", { step: "capture-done", tabId: nextTab.id });
     }
     previousTabId = nextTab.id;
     if (remainingCount > 0) remainingCount--;

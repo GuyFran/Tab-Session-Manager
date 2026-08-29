@@ -59,20 +59,24 @@ export const buildIncognitoPlaceholderUrl = ({ url, title, favIconUrl = "", thum
     "</title>" +
     icon +
     "<style>html,body{margin:0;height:100%;background:#1d1d24;color:#e3e6ec;font:14px system-ui,sans-serif}" +
-    ".w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;box-sizing:border-box}" +
-    "img{max-width:72%;max-height:62%;border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.55)}" +
-    "h2{margin:0;font-weight:500;max-width:82%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
-    "p{margin:0;opacity:.55;font-size:12px}</style></head>" +
+    ".w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;box-sizing:border-box}" +
+    "img{width:min(94%,1400px);max-height:76%;object-fit:contain;border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.55);cursor:pointer}" +
+    "h2{margin:0;font-weight:500;max-width:88%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    "button{font:15px system-ui,sans-serif;padding:10px 26px;border:0;border-radius:8px;background:#0d9488;color:#fff;cursor:pointer}" +
+    "button:hover{background:#0f766e}" +
+    "p{margin:0;opacity:.5;font-size:12px}</style></head>" +
     '<body><div class="w">' +
     img +
     "<h2>" +
     safeTitle +
-    "</h2><p>Loading…</p></div>" +
-    // 表示された瞬間に実URLへ遷移する。discard後の再アクティブ化ではdata:URLが
-    // 即座に再描画されるため、実ページの読み込み中はサムネイルが表示され続ける
+    "</h2><button>Open page</button><p>Hibernated — click the button or the image to load</p></div>" +
+    // 自動では遷移しない(ユーザ要望)。ボタンかサムネイルのクリック、またはEnterで
+    // 実URLへ遷移する
     "<scr" +
     "ipt>(function(){var go=function(){var m=location.hash.match(/tsm=([^&]+)/);if(m)location.replace(decodeURIComponent(m[1]))};" +
-    'if(document.visibilityState==="visible")go();else document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")go()})})();</scr' +
+    'document.querySelector("button").addEventListener("click",go);' +
+    'var i=document.querySelector("img");if(i)i.addEventListener("click",go);' +
+    'document.addEventListener("keydown",function(e){if(e.key==="Enter")go()})})();</scr' +
     "ipt></body></html>";
 
   let fragment = MARKER + encodeURIComponent(url) + "&t=" + encodeURIComponent(title || "");

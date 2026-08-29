@@ -87,8 +87,9 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
 ## Current status (2026-08-29)
 
-- Version **7.4.31**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.32**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.32 — placeholder polish:** 920 px thumbnails displayed near full-width, manual load (Open page button / click image / Enter — no auto-reload on activation), and the swap re-inserts the placeholder into the original tab group.
 - **v7.4.31 — incognito tabs hibernate on data:URL thumbnail placeholders.** Extension pages cannot render in incognito (spanning), but tabs.create with a data: URL can: the sweep swaps each captured tab to a self-contained placeholder (thumbnail embedded, real URL in the #tsm= fragment, self-redirect on visible), then discards it. Session save maps placeholders back to real URLs (verified: 0 leaks). See incognitoPlaceholder.js.
 - **v7.4.29 — debug panel now traces the whole thumbnail pipeline (URL-free)** — thumb stored/failed/skipped tiles, sweep lifecycle events, deferred-sweep banner; plus a fix for the resume deadlock the tracing exposed (renderability polled up to 8 s, timer retry when the deferred window is already focused). Verified 6/6 with a clean URL-leak check.
 - **v7.4.28 — capture quota fix.** Chrome limits `captureVisibleTab()` to 2 calls/sec; the sweep's
