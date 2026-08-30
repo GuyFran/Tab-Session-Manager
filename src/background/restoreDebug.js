@@ -67,6 +67,11 @@ const makeDefaultSummary = (windows = [], totalTabs = 0) => ({
   thumbStored: 0,
   thumbFailed: 0,
   thumbSkipped: 0,
+  thumbSkipReasons: {},
+  tabGroupsRestored: null,
+  groupedTabsRestored: null,
+  groupsPreserved: 0,
+  groupErrors: 0,
   sweepDeferred: 0,
   lastThumbError: null
 });
@@ -82,8 +87,20 @@ const updateSummary = event => {
       summary.thumbFailed = (summary.thumbFailed || 0) + 1;
       summary.lastThumbError = event.error || "unknown";
       break;
-    case "thumb-skip":
+    case "thumb-skip": {
       summary.thumbSkipped = (summary.thumbSkipped || 0) + 1;
+      const reason = event.reason || "unknown";
+      summary.thumbSkipReasons = summary.thumbSkipReasons || {};
+      summary.thumbSkipReasons[reason] = (summary.thumbSkipReasons[reason] || 0) + 1;
+      break;
+    }
+    case "tab-groups-restore":
+      summary.tabGroupsRestored = (summary.tabGroupsRestored || 0) + (event.groupCount || 0);
+      summary.groupedTabsRestored = (summary.groupedTabsRestored || 0) + (event.groupedTabCount || 0);
+      break;
+    case "sweep-tab-regrouped":
+      if (event.ok) summary.groupsPreserved = (summary.groupsPreserved || 0) + 1;
+      else summary.groupErrors = (summary.groupErrors || 0) + 1;
       break;
     case "sweep-window-deferred":
       summary.sweepDeferred = (summary.sweepDeferred || 0) + 1;

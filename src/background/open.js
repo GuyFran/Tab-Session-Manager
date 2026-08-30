@@ -383,6 +383,12 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   await waitForBatch(true);
 
   if (isEnabledTabGroups && getSettings("saveTabGroupsV2")) {
+    const groupedTabCount = sortedTabs.filter(tab => tab.groupId > 0).length;
+    trace?.add("tab-groups-restore", {
+      windowId: currentWindow.id,
+      groupCount: (session.tabGroups || []).length,
+      groupedTabCount
+    });
     createTabGroups(currentWindow.id, sortedTabs, session.tabGroups || []);
   }
 

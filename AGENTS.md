@@ -75,7 +75,7 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-29)
 
-- Version **7.4.38**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.40**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
 - **v7.4.38 — parallel per-window sweeps + popup sweep menu.** Explicit tabs.reload() makes tabs load in unfocused windows; captureVisibleTab hangs are timeout-guarded (5 s). Two windows swept concurrently in 15 s (4/4+4/4).
 - **v7.4.37 — DEBUG_RESTORE_TAB_LIMIT removed (DBG-01 closed).** Restores are no longer capped at 10 tabs per window; verified 14/14 incognito tabs restored with intact URLs and zero debug-tab-limit events.

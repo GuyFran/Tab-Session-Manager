@@ -250,9 +250,22 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabI
   // 新規作成タブは元タブのタブグループから外れて生まれるため、明示的に戻す
   // (tabs.group()は"tabs"権限のみで使える。Firefoxには存在しないのでガード)
   if (tab.groupId != null && tab.groupId > -1 && browser.tabs.group) {
-    await browser.tabs
+    const regrouped = await browser.tabs
       .group({ tabIds: [placeholderTab.id], groupId: tab.groupId })
-      .catch(e => log.warn(logDir, "swapToPlaceholderAndDiscard() regroup failed", e?.message));
+      .then(() => true)
+      .catch(e => {
+        log.warn(logDir, "swapToPlaceholderAndDiscard() regroup failed", e?.message);
+        addSweepDebugEvent("sweep-tab-regrouped", {
+          tabId: placeholderTab.id,
+          groupId: tab.groupId,
+          ok: false,
+          error: e?.message || String(e)
+        });
+        return false;
+      });
+    if (regrouped) {
+      addSweepDebugEvent("sweep-tab-regrouped", { tabId: placeholderTab.id, groupId: tab.groupId, ok: true });
+    }
   }
   await browser.tabs.remove(tabId).catch(() => {});
   addSweepDebugEvent("sweep-step", { step: "swap-removed", tabId });

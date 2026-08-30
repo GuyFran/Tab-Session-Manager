@@ -109,13 +109,42 @@ export default class RestoreDebugPage extends Component {
             value={summary.thumbFailed}
             warning={summary.thumbFailed > 0}
           />
-          <SummaryItem label="Thumb skipped" value={summary.thumbSkipped} />
+          <SummaryItem label="Thumb skipped (benign)" value={summary.thumbSkipped} />
           <SummaryItem
             label="Sweeps deferred"
             value={summary.sweepDeferred}
             warning={summary.sweepDeferred > 0}
           />
+          <SummaryItem
+            label="Tab groups restored"
+            value={
+              summary.tabGroupsRestored == null
+                ? "—"
+                : `${summary.tabGroupsRestored} (${summary.groupedTabsRestored} tabs)`
+            }
+          />
+          <SummaryItem
+            label="Groups kept on hibernate"
+            value={summary.groupsPreserved}
+            warning={summary.groupErrors > 0}
+          />
+          {summary.groupErrors > 0 && (
+            <SummaryItem label="Group errors" value={summary.groupErrors} warning />
+          )}
         </section>
+
+        {summary.thumbSkipped > 0 && (
+          <div className="skipExplainer">
+            Skipped captures are normal, not lost thumbnails:{" "}
+            {Object.entries(summary.thumbSkipReasons || {})
+              .map(([reason, count]) => `${reason} ×${count}`)
+              .join(", ") || "—"}
+            . "rate-limit" = duplicate attempt for a URL already captured moments ago (the sweep
+            and two passive listeners fire for the same tab — only one must succeed); "pre-check"
+            = tab not finished loading or not an http(s) page at that instant; "private-gate" =
+            passive capture of an incognito tab while "save private windows" is off.
+          </div>
+        )}
 
         {summary.lastThumbError && (
           <div className="restoreError">
