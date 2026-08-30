@@ -10,14 +10,6 @@ import { createRestoreDebug } from "./restoreDebug.js";
 
 const logDir = "background/open";
 
-// ---------------------------------------------------------------------------
-// TEMPORARY DEBUG AID — restore at most this many tabs per *window*, so a large
-// session can be exercised quickly while the incognito restore routing is being
-// diagnosed. Per-window rather than per-session so that a big leading normal
-// window cannot starve a later private window of its share.
-// Set to 0 to restore everything again. Remove once the investigation is done.
-// ---------------------------------------------------------------------------
-const DEBUG_RESTORE_TAB_LIMIT = 10;
 
 export async function openSession(session, property = "openInNewWindow") {
   log.log(logDir, "openSession()", session, property);
@@ -40,13 +32,6 @@ export async function openSession(session, property = "openInNewWindow") {
   let isFirstWindowFlag = true;
   let restoredWindowIds = [];
   tabList = {};
-  if (DEBUG_RESTORE_TAB_LIMIT > 0) {
-    log.warn(
-      logDir,
-      `openSession() DEBUG_RESTORE_TAB_LIMIT active: ${DEBUG_RESTORE_TAB_LIMIT} tabs per window`
-    );
-    trace?.add("debug-tab-limit", { limit: DEBUG_RESTORE_TAB_LIMIT });
-  }
   try {
     for (let win in session.windows) {
     const isIncognitoWindow = Object.values(session.windows[win]).some(tab => tab.incognito);
@@ -325,25 +310,6 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
     return a.index - b.index;
   });
 
-  // TEMPORARY DEBUG AID: cap each window at DEBUG_RESTORE_TAB_LIMIT tabs.
-  // Applied after sorting so the tabs kept are the first ones by tab index.
-  let truncatedByDebugLimit = false;
-  if (DEBUG_RESTORE_TAB_LIMIT > 0 && sortedTabs.length > DEBUG_RESTORE_TAB_LIMIT) {
-    truncatedByDebugLimit = true;
-    const requested = sortedTabs.length;
-    sortedTabs = sortedTabs.slice(0, DEBUG_RESTORE_TAB_LIMIT);
-    log.warn(
-      logDir,
-      `createTabs() DEBUG_RESTORE_TAB_LIMIT: restoring ${sortedTabs.length}/${requested} tabs of window ${win}`
-    );
-    trace?.add("debug-tab-limit-applied", {
-      windowId: currentWindow.id,
-      savedWindowId: win,
-      requested: requested,
-      restored: sortedTabs.length,
-      skipped: requested - sortedTabs.length
-    });
-  }
 
   const firstTabId = currentWindow.tabs[0].id;
   if (currentWindow.tabs[0].pinned) {
@@ -425,21 +391,7 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
   }
 
   if (isTrackingSession(session.tag)) {
-    if (truncatedByDebugLimit) {
-      // トラッキングは保存済みセッションのウィンドウを生きているウィンドウで上書きする。
-      // デバッグ上限で切り詰めた10タブのウィンドウを同期させると、保存されていた残りの
-      // タブが保存データから完全に消える。切り詰めたウィンドウは追跡しない
-      log.warn(
-        logDir,
-        `createTabs() DEBUG_RESTORE_TAB_LIMIT: tracking suppressed for truncated window ${win} to protect the saved session`
-      );
-      trace?.add("debug-tab-limit-tracking-suppressed", {
-        windowId: currentWindow.id,
-        savedWindowId: win
-      });
-    } else {
-      startTracking(session.id, win, currentWindow.id);
-    }
+    startTracking(session.id, win, currentWindow.id);
   }
 }
 

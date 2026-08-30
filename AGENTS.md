@@ -73,22 +73,11 @@ lift it — verified 2026-08-27. Any automated run must load the extension throu
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## ⚠ TEMPORARY DEBUG CAP IS ACTIVE (since v7.4.20, per-window since v7.4.21)
-
-`src/background/open.js` has `const DEBUG_RESTORE_TAB_LIMIT = 10;` near the top. **Every restored
-window currently stops after 10 tabs.** The cap is per window, not per session, so a large normal
-window cannot starve a later private window of its share. This is a deliberate testing aid, not a
-bug — set it to `0` to restore everything again, and delete the constant plus the capping block in
-`createTabs()` and the warn/trace block in `openSession()` when the incognito routing investigation
-is finished. While it is on, the Incognito restore debug panel shows a red "DEBUG TAB LIMIT ACTIVE"
-banner and the trace carries one `debug-tab-limit` event plus one `debug-tab-limit-applied` event
-per capped window. Since v7.4.24, a window the cap truncated is NOT tracked, so a tracked session
-cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
-
 ## Current status (2026-08-29)
 
-- Version **7.4.36**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.37**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.37 — DEBUG_RESTORE_TAB_LIMIT removed (DBG-01 closed).** Restores are no longer capped at 10 tabs per window; verified 14/14 incognito tabs restored with intact URLs and zero debug-tab-limit events.
 - **v7.4.36 — second sweep button in the filter row; debug panel Clear button + scroll fix.**
 - **v7.4.35 — popup sweep button = manual current-window sweep:** immediate start (no focus wait), clears the deferred entry; reliable fallback when sweep-on-focus does not fire.
 - **v7.4.34 — near-fullscreen thumbnail + first-tab miss fixed:** image flex-fills the viewport (1600 px captures); only load-completed tabs are swapped to placeholders, so a tab the hidden-phase sweep failed to load stays a sweep target and gets its thumbnail on resume (verified 6/6).
