@@ -87,8 +87,9 @@ cannot be rewritten down to 10 tabs (confirmed data-loss path otherwise).
 
 ## Current status (2026-08-29)
 
-- Version **7.4.34**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.35**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.35 — popup sweep button = manual current-window sweep:** immediate start (no focus wait), clears the deferred entry; reliable fallback when sweep-on-focus does not fire.
 - **v7.4.34 — near-fullscreen thumbnail + first-tab miss fixed:** image flex-fills the viewport (1600 px captures); only load-completed tabs are swapped to placeholders, so a tab the hidden-phase sweep failed to load stays a sweep target and gets its thumbnail on resume (verified 6/6).
 - **v7.4.33 — readable placeholder URL:** only % and # are escaped, title first — the address bar now reads like a page name instead of a hex wall.
 - **v7.4.32 — placeholder polish:** 920 px thumbnails displayed near full-width, manual load (Open page button / click image / Enter — no auto-reload on activation), and the swap re-inserts the placeholder into the original tab group.

@@ -63,9 +63,18 @@ export default props => {
     });
   };
 
-  const handleSweepClick = () => {
+  const handleSweepClick = async () => {
+    if (sweepStatus.isSweeping) {
+      browser.runtime.sendMessage({ message: "stopPreloadSweep" });
+      return;
+    }
+    // 現在のウィンドウを対象に手動でスウィープを開始する。manualフラグで
+    // フォーカス待ちをスキップし、延期リストの残骸も掃除される
+    const currentWindow = await browser.windows.getCurrent().catch(() => null);
     browser.runtime.sendMessage({
-      message: sweepStatus.isSweeping ? "stopPreloadSweep" : "startPreloadSweep"
+      message: "startPreloadSweep",
+      windowIds: currentWindow ? [currentWindow.id] : undefined,
+      manual: true
     });
   };
 

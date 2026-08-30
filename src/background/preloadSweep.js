@@ -260,7 +260,7 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabI
   });
 };
 
-const sweepWindow = async windowId => {
+const sweepWindow = async (windowId, { skipFocusWait = false } = {}) => {
   const originalActiveTab = (
     await browser.tabs.query({ windowId: windowId, active: true }).catch(() => [])
   )[0];
@@ -271,7 +271,8 @@ const sweepWindow = async windowId => {
   const processedTabIds = new Set();
   // 読み込みが完了した(=placeholderへ差し替えてよい)タブ
   const completedTabIds = new Set();
-  const focusState = { skipWait: false };
+  // 手動起動時はユーザが今すぐの実行を求めているので、フォーカス待ちをしない
+  const focusState = { skipWait: skipFocusWait };
   let previousTabId = null;
   // 万一idの追跡が破れても暴走しないよう、反復回数に上限を設ける
   const initialTabCount = (await browser.tabs.query({ windowId: windowId }).catch(() => []))
@@ -381,9 +382,18 @@ const sweepWindow = async windowId => {
   currentSweepWindowId = null;
 };
 
-export const startPreloadSweep = async windowIds => {
+export const startPreloadSweep = async (windowIds, { manual = false } = {}) => {
   if (isSweeping) return;
   if (!getSettings("ifLazyLoading")) return;
+  // 手動起動されたウィンドウは延期リストから外す(自動再開との二重実行を防ぐ)
+  if (manual && Array.isArray(windowIds)) {
+    try {
+      const ids = await getDeferredWindowIds();
+      await browser.storage.session.set({
+        [DEFERRED_KEY]: ids.filter(id => !windowIds.includes(id))
+      });
+    } catch (e) {}
+  }
   isSweeping = true;
   shouldStop = false;
 
@@ -395,7 +405,7 @@ export const startPreloadSweep = async windowIds => {
       windowIds = windows.filter(window => window.type === "normal").map(window => window.id);
     }
     log.info(logDir, "startPreloadSweep()", windowIds);
-    addSweepDebugEvent("sweep-start", { windowIds: String(windowIds) });
+    addSweepDebugEvent("sweep-start", { windowIds: String(windowIds), manual });
 
     remainingCount = 0;
     const sweepableWindowIds = [];
@@ -412,7 +422,7 @@ export const startPreloadSweep = async windowIds => {
     for (const windowId of sweepableWindowIds) {
       if (shouldStop) break;
       addSweepDebugEvent("sweep-window-start", { windowId });
-      await sweepWindow(windowId).catch(e => {
+      await sweepWindow(windowId, { skipFocusWait: manual }).catch(e => {
         log.error(logDir, "sweepWindow()", e);
         addSweepDebugEvent("sweep-window-error", { windowId, error: e?.message || String(e) });
       });

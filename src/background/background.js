@@ -193,7 +193,7 @@ const onMessageListener = async (request, sender, sendResponse) => {
     case "endTrackingByWindowDelete":
       return endTrackingByWindowDelete(request.sessionId, request.originalWindowId);
     case "startPreloadSweep":
-      return startPreloadSweep(request.windowIds);
+      return startPreloadSweep(request.windowIds, { manual: !!request.manual });
     case "stopPreloadSweep":
       return stopPreloadSweep();
     case "getPreloadSweepStatus":
