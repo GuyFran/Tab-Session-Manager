@@ -86,6 +86,8 @@ const isShowAutoOption = tagsCount => {
 };
 
 export default class OptionsArea extends Component {
+  state = { showSweepMenu: false, openWindows: [], currentWindowId: null };
+
   handleFilterChange = e => {
     const filterValue = e.target.value;
     this.props.changeFilter(filterValue);
@@ -96,20 +98,42 @@ export default class OptionsArea extends Component {
     this.props.changeSort(sortValue);
   };
 
-  // 現在のウィンドウを手動でスウィープする(Headerのボタンと同じ動作)。
-  // スウィープ中の再クリックは停止
-  handleSweepClick = async () => {
-    const sweepStatus = this.props.sweepStatus || {};
-    if (sweepStatus.isSweeping) {
-      browser.runtime.sendMessage({ message: "stopPreloadSweep" });
+  // スウィープメニューを開く。開くたびに現在のウィンドウ一覧を取り直す
+  toggleSweepMenu = async () => {
+    if (this.state.showSweepMenu) {
+      this.setState({ showSweepMenu: false });
       return;
     }
-    const currentWindow = await browser.windows.getCurrent().catch(() => null);
+    const [windows, currentWindow] = await Promise.all([
+      browser.windows.getAll({ populate: true }).catch(() => []),
+      browser.windows.getCurrent().catch(() => null)
+    ]);
+    const openWindows = windows
+      .filter(w => w.type === "normal")
+      .map(w => ({
+        id: w.id,
+        incognito: w.incognito,
+        tabCount: (w.tabs || []).length,
+        title: (w.tabs || []).find(t => t.active)?.title || ""
+      }));
+    this.setState({
+      showSweepMenu: true,
+      openWindows,
+      currentWindowId: currentWindow?.id ?? null
+    });
+  };
+
+  sweepWindows = windowIds => {
     browser.runtime.sendMessage({
       message: "startPreloadSweep",
-      windowIds: currentWindow ? [currentWindow.id] : undefined,
+      windowIds,
       manual: true
     });
+    this.setState({ showSweepMenu: false });
+  };
+
+  stopWindow = windowId => {
+    browser.runtime.sendMessage({ message: "stopPreloadSweep", windowId });
   };
 
   componentDidUpdate() {
@@ -179,16 +203,46 @@ export default class OptionsArea extends Component {
           </div>
           <button
             className={`lineSweepButton ${this.props.sweepStatus?.isSweeping ? "sweeping" : ""}`}
-            onClick={this.handleSweepClick}
-            title={browser.i18n.getMessage(
-              this.props.sweepStatus?.isSweeping ? "stopPreloadSweepLabel" : "startPreloadSweepLabel"
-            )}
+            onClick={this.toggleSweepMenu}
+            title={browser.i18n.getMessage("startPreloadSweepLabel")}
           >
             <UpdateIcon />
             {this.props.sweepStatus?.isSweeping && this.props.sweepStatus.remainingCount > 0 && (
               <span className="count">{this.props.sweepStatus.remainingCount}</span>
             )}
           </button>
+          {this.state.showSweepMenu && (
+            <>
+              <div className="sweepMenuOverlay" onClick={() => this.setState({ showSweepMenu: false })} />
+              <div className="sweepMenu">
+                <button
+                  className="sweepMenuRow all"
+                  onClick={() => this.sweepWindows(this.state.openWindows.map(w => w.id))}
+                >
+                  <UpdateIcon />
+                  <span className="label">Sweep all windows ({this.state.openWindows.length})</span>
+                </button>
+                {this.state.openWindows.map(w => {
+                  const isSweeping = (this.props.sweepStatus?.sweepingWindowIds || []).includes(w.id);
+                  return (
+                    <button
+                      key={w.id}
+                      className={`sweepMenuRow ${isSweeping ? "sweeping" : ""}`}
+                      onClick={() => (isSweeping ? this.stopWindow(w.id) : this.sweepWindows([w.id]))}
+                      title={w.title}
+                    >
+                      <span className="badge">{w.incognito ? "🕶" : "🪟"}</span>
+                      <span className="label">
+                        {w.id === this.state.currentWindowId ? "This window" : w.title || "Window"}
+                        {` — ${w.tabCount} tab${w.tabCount === 1 ? "" : "s"}`}
+                      </span>
+                      <span className="action">{isSweeping ? "Stop" : "Sweep"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
           <button
             className="searchButton"
             onClick={() => this.props.toggleSearchBar()}

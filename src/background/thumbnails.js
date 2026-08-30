@@ -149,6 +149,19 @@ const traceCapture = (entry, debugEvent, debugDetails) => {
 // するため、無対策では割当を超えた瞬間のタブのサムネイルだけが欠落する(実測)。
 // 全キャプチャを直列キューに通し、呼び出し間隔を空けて割当超過を構造的に防ぐ
 const CAPTURE_SPACING_MS = 600;
+// captureVisibleTab()は失敗をrejectで返すとは限らず、描画フレームの無い
+// ウィンドウ(discardされたタブがアクティブ等)では永久に未解決のまま残ることがある
+// (実測)。キューは直列なので、1回のハングが全ウィンドウの以後のキャプチャを
+// 巻き込んで固める。必ずタイムアウトを付ける
+const CAPTURE_CALL_TIMEOUT_MS = 5000;
+export const captureVisibleTabWithTimeout = (windowId, options) =>
+  Promise.race([
+    browser.tabs.captureVisibleTab(windowId, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("captureVisibleTab timed out")), CAPTURE_CALL_TIMEOUT_MS)
+    )
+  ]);
+
 let captureQueue = Promise.resolve();
 let lastCaptureCallAt = 0;
 const enqueueCapture = task => {
@@ -194,7 +207,7 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
       }
       lastCaptureCallAt = Date.now();
       // 保護されたページ等ではエラーになるのでcatchで無視する
-      const dataUrl = await browser.tabs.captureVisibleTab(windowId, {
+      const dataUrl = await captureVisibleTabWithTimeout(windowId, {
         format: "jpeg",
         quality: 70
       });

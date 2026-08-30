@@ -46,7 +46,7 @@ import {
   startPreloadSweep,
   stopPreloadSweep,
   getPreloadSweepStatus,
-  getSweepingWindowId,
+  getSweepingWindowIds,
   handleWindowFocusForDeferredSweep
 } from "./preloadSweep";
 import { getRestoreDebug, downloadRestoreDebug, clearRestoreDebug } from "./restoreDebug";
@@ -195,7 +195,7 @@ const onMessageListener = async (request, sender, sendResponse) => {
     case "startPreloadSweep":
       return startPreloadSweep(request.windowIds, { manual: !!request.manual });
     case "stopPreloadSweep":
-      return stopPreloadSweep();
+      return stopPreloadSweep(request.windowId);
     case "getPreloadSweepStatus":
       return getPreloadSweepStatus();
     case "getRestoreDebug":
@@ -217,8 +217,8 @@ const handleReplace = async info => {
   // 遷移が確定せずplaceholderのまま残る。ただし抑制はそのウィンドウ由来のイベントに
   // 限定する — 全体を抑制すると、スウィープ中にユーザが他ウィンドウでアクティブにした
   // placeholderが遷移しないまま取り残される
-  const sweepingWindowId = getSweepingWindowId();
-  if (sweepingWindowId != null && eventWindowId === sweepingWindowId) return;
+  const sweepingWindowIds = getSweepingWindowIds();
+  if (sweepingWindowIds.includes(eventWindowId)) return;
   // 遷移先はイベントが起きたウィンドウを明示する。既定のWINDOW_ID_CURRENT(最後に
   // フォーカスされたウィンドウ)は、スウィープ中や複数ウィンドウ操作中はイベント元と
   // 食い違うことがあり、抑制の判定と遷移の対象がずれてしまう
