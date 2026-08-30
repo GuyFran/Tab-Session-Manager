@@ -63,19 +63,14 @@ export default props => {
     });
   };
 
-  const handleSweepClick = async () => {
+  // 全ウィンドウを並行してスウィープする(グローバルスウィープ)。
+  // スウィープ中の再クリックは全停止。ウィンドウ単位のスウィープはフィルタ行のメニューから
+  const handleSweepClick = () => {
     if (sweepStatus.isSweeping) {
       browser.runtime.sendMessage({ message: "stopPreloadSweep" });
       return;
     }
-    // 現在のウィンドウを対象に手動でスウィープを開始する。manualフラグで
-    // フォーカス待ちをスキップし、延期リストの残骸も掃除される
-    const currentWindow = await browser.windows.getCurrent().catch(() => null);
-    browser.runtime.sendMessage({
-      message: "startPreloadSweep",
-      windowIds: currentWindow ? [currentWindow.id] : undefined,
-      manual: true
-    });
+    browser.runtime.sendMessage({ message: "startPreloadSweep", manual: true });
   };
 
   const shouldShowCloudSync = getSettings("signedInEmail");

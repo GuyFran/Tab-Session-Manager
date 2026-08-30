@@ -5,7 +5,6 @@ import { getSettings } from "src/settings/settings";
 import { returnReplaceURL, replacePage } from "./replace.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
-import { startPreloadSweep } from "./preloadSweep.js";
 import { createRestoreDebug } from "./restoreDebug.js";
 
 const logDir = "background/open";
@@ -147,8 +146,8 @@ export async function openSession(session, property = "openInNewWindow") {
     }
     }
 
-    // 復元完了後、バックグラウンドで各タブを順次ロードしてサムネイルを取得し、サスペンドする
-    if (getSettings("ifPreloadAfterRestore")) startPreloadSweep(restoredWindowIds);
+    // v7.4.41: 復元後の自動スウィープは廃止。スウィープはpopupの手動操作のみ
+    // (全ウィンドウ並行 or ウィンドウ単位)で起動する
     trace?.add("restore-finished", { restoredWindowIds: restoredWindowIds });
   } catch (e) {
     trace?.add("restore-error", { message: e?.message || String(e) });
