@@ -1,0 +1,89 @@
+#windowsArea {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0 6px;
+  flex-shrink: 0;
+
+  .windowsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 0 4px;
+
+    .heading {
+      color: var(--sub-text);
+      font-size: 11px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .sweepAllButton {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--highlight);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 3px;
+
+      svg {
+        height: 12px;
+        fill: var(--highlight);
+      }
+
+      &:hover {
+        background: var(--hover);
+      }
+    }
+  }
+
+  .windowRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 2px;
+    border-radius: 3px;
+    font-size: 12px;
+
+    &:hover {
+      background: var(--hover);
+    }
+
+    .badge {
+      flex-shrink: 0;
+    }
+
+    .label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--main-text);
+    }
+
+    .remaining {
+      flex-shrink: 0;
+      color: var(--highlight);
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .rowAction {
+      flex-shrink: 0;
+      color: var(--highlight);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 3px;
+
+      &:hover {
+        background: var(--button-hover, var(--hover));
+      }
+    }
+
+    &.sweeping .rowAction {
+      color: var(--error, #c40);
+    }
+  }
+}

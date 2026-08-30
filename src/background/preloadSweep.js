@@ -39,7 +39,10 @@ const totalRemaining = () =>
 export const getPreloadSweepStatus = () => ({
   isSweeping: getSweepingWindowIds().length > 0,
   remainingCount: totalRemaining(),
-  sweepingWindowIds: getSweepingWindowIds()
+  sweepingWindowIds: getSweepingWindowIds(),
+  remainingByWindow: Object.fromEntries(
+    [...activeSweeps.entries()].map(([id, run]) => [id, run.remaining || 0])
+  )
 });
 
 // popupにスウィープ状態を通知する

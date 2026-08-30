@@ -21,6 +21,7 @@ import { deleteWindow, deleteTab } from "../../common/editSessions.js";
 import openUrl from "../actions/openUrl";
 import Header from "./Header";
 import OptionsArea from "./OptionsArea";
+import WindowsArea from "./WindowsArea";
 import SessionsArea, { getSortedSessions } from "./SessionsArea";
 import SessionDetailsArea from "./SessionDetailsArea";
 import Notification from "./Notification";
@@ -582,8 +583,8 @@ export default class PopupPage extends Component {
               optionsAreaRef={this.optionsAreaElement}
               searchBarRef={this.searchBarElement}
               sessionsAreaRef={this.sessionsAreaElement}
-              sweepStatus={this.state.sweepStatus}
-            />
+              />
+            <WindowsArea sweepStatus={this.state.sweepStatus} />
             <Error error={this.state.error} />
             <SessionsArea
               sessions={this.state.sessions || []}
