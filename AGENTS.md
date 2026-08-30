@@ -75,8 +75,9 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-29)
 
-- Version **7.4.43**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.44**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.44 — debug panel: 🐞 reopen button in the popup, storage.session persistence across SW restarts, tab-group create/error tracking with tiles + last-error banner.**
 - **v7.4.43 — blank-URL fix:** discardAfterCreate honors its URL-commit wait — timeout re-navigates, then refuses to discard rather than blanking; post-discard blanks self-repair. Verified 0 blanks with 9 s-stalling pages.
 - **v7.4.42 — "Open windows" panel in the popup sidebar:** per-window Sweep/Stop rows + Sweep all (parallel), always visible above the session list.
 - **v7.4.41 — sweeps are manual-only.** No auto sweep after restore; header button = global parallel sweep of all windows, filter-row menu = per-window (ifPreloadAfterRestore is inert).

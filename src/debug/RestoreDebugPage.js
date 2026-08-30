@@ -116,22 +116,44 @@ export default class RestoreDebugPage extends Component {
             warning={summary.sweepDeferred > 0}
           />
           <SummaryItem
-            label="Tab groups restored"
+            label="Tab groups created"
             value={
-              summary.tabGroupsRestored == null
+              summary.tabGroupsRestored == null && !summary.tabGroupsCreated
                 ? "—"
-                : `${summary.tabGroupsRestored} (${summary.groupedTabsRestored} tabs)`
+                : `${summary.tabGroupsCreated || 0}${
+                    summary.tabGroupsRestored > 0 ? `/${summary.tabGroupsRestored}` : ""
+                  } (${summary.groupedTabsCreated || 0} tabs)`
             }
+            warning={summary.tabGroupErrors > 0}
           />
           <SummaryItem
             label="Groups kept on hibernate"
             value={summary.groupsPreserved}
             warning={summary.groupErrors > 0}
           />
-          {summary.groupErrors > 0 && (
-            <SummaryItem label="Group errors" value={summary.groupErrors} warning />
+          {(summary.tabGroupErrors > 0 || summary.groupErrors > 0) && (
+            <SummaryItem
+              label="Group errors"
+              value={(summary.tabGroupErrors || 0) + (summary.groupErrors || 0)}
+              warning
+            />
           )}
         </section>
+
+        {summary.lastGroupError && (
+          <div className="restoreError">Last tab-group failure: {summary.lastGroupError}</div>
+        )}
+
+        {Object.keys(summary.sweepWindowSkips || {}).length > 0 && (
+          <div className="skipExplainer">
+            Windows skipped by the sweep:{" "}
+            {Object.entries(summary.sweepWindowSkips)
+              .map(([reason, count]) => `${reason} ×${count}`)
+              .join(", ")}
+            . "ifCaptureThumbnails-off" = thumbnail capture is disabled in Settings, so sweeping an
+            incognito window would gain nothing.
+          </div>
+        )}
 
         {summary.thumbSkipped > 0 && (
           <div className="skipExplainer">

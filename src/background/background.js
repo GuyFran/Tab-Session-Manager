@@ -49,7 +49,12 @@ import {
   getSweepingWindowIds,
   handleWindowFocusForDeferredSweep
 } from "./preloadSweep";
-import { getRestoreDebug, downloadRestoreDebug, clearRestoreDebug } from "./restoreDebug";
+import {
+  getRestoreDebug,
+  downloadRestoreDebug,
+  clearRestoreDebug,
+  openRestoreDebugPanel
+} from "./restoreDebug";
 
 const logDir = "background/background";
 
@@ -204,6 +209,8 @@ const onMessageListener = async (request, sender, sendResponse) => {
       return downloadRestoreDebug();
     case "clearRestoreDebug":
       return clearRestoreDebug();
+    case "openRestoreDebugPanel":
+      return openRestoreDebugPanel();
   }
 };
 

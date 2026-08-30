@@ -280,7 +280,7 @@ async function removeNowOpenTabs() {
   return await browser.windows.get(currentWinId, { populate: true });
 }
 
-const createTabGroups = async (windowId, tabs, tabGroupsInfo) => {
+const createTabGroups = async (windowId, tabs, tabGroupsInfo, trace = null) => {
   let groups = {};
   for (let tab of tabs) {
     if (!(tab.groupId > 0)) continue;
@@ -294,17 +294,21 @@ const createTabGroups = async (windowId, tabs, tabGroupsInfo) => {
   }
 
   for (let group of Object.values(groups)) {
-    browser.tabs.group(
-      {
+    try {
+      const groupId = await browser.tabs.group({
         createProperties: { windowId: windowId },
         tabIds: group.tabIds
-      },
-      groupId => {
-        const groupInfo = tabGroupsInfo.find(info => info.id === group.originalGroupId);
-        if (!groupInfo) return;
-        if (getSettings("saveTabGroupsV2")) updateTabGroups(groupId, groupInfo);
-      }
-    );
+      });
+      trace?.add("tab-group-created", { groupId: groupId, tabCount: group.tabIds.length });
+      const groupInfo = tabGroupsInfo.find(info => info.id === group.originalGroupId);
+      if (groupInfo && getSettings("saveTabGroupsV2")) updateTabGroups(groupId, groupInfo);
+    } catch (e) {
+      trace?.add("tab-group-error", {
+        tabCount: group.tabIds.length,
+        error: e?.message || String(e)
+      });
+      log.warn(logDir, "createTabGroups() group failed", e?.message);
+    }
   }
 };
 
@@ -420,7 +424,7 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
       groupCount: (session.tabGroups || []).length,
       groupedTabCount
     });
-    createTabGroups(currentWindow.id, sortedTabs, session.tabGroups || []);
+    createTabGroups(currentWindow.id, sortedTabs, session.tabGroups || [], trace);
   }
 
   if (isEnabledWindowTitle) {

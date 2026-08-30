@@ -7,6 +7,23 @@ let activeRestoreDebug = null;
 let debugWindowId = null;
 let pendingBroadcast = null;
 
+// MV3のSWは数十秒で死ぬ。デバッグデータをstorage.session(ブラウザ再起動で消える)へ
+// 退避して、ブラウザセッションの間はSW再起動を跨いで保持する
+const PERSIST_KEY = "restoreDebugState";
+const persistState = () => {
+  browser.storage.session.set({ [PERSIST_KEY]: activeRestoreDebug }).catch(() => {});
+};
+// モジュール初期化時(=SW起動時)に退避分を読み戻す。既に新しいセッションが
+// 作られていた場合はそちらを優先する
+const hydrated = browser.storage.session
+  .get(PERSIST_KEY)
+  .then(stored => {
+    if (!activeRestoreDebug && stored?.[PERSIST_KEY]) {
+      activeRestoreDebug = stored[PERSIST_KEY];
+    }
+  })
+  .catch(() => {});
+
 const makeSnapshot = () => {
   if (!activeRestoreDebug) return null;
   return {
@@ -25,6 +42,7 @@ const broadcast = () => {
   if (pendingBroadcast) return;
   pendingBroadcast = setTimeout(() => {
     pendingBroadcast = null;
+    persistState();
     browser.runtime
       .sendMessage({ message: "restoreDebugUpdated", restoreDebug: makeSnapshot() })
       .catch(() => {});
@@ -70,8 +88,13 @@ const makeDefaultSummary = (windows = [], totalTabs = 0) => ({
   thumbSkipReasons: {},
   tabGroupsRestored: null,
   groupedTabsRestored: null,
+  tabGroupsCreated: 0,
+  groupedTabsCreated: 0,
+  tabGroupErrors: 0,
   groupsPreserved: 0,
   groupErrors: 0,
+  lastGroupError: null,
+  sweepWindowSkips: {},
   sweepDeferred: 0,
   lastThumbError: null
 });
@@ -100,8 +123,25 @@ const updateSummary = event => {
       break;
     case "sweep-tab-regrouped":
       if (event.ok) summary.groupsPreserved = (summary.groupsPreserved || 0) + 1;
-      else summary.groupErrors = (summary.groupErrors || 0) + 1;
+      else {
+        summary.groupErrors = (summary.groupErrors || 0) + 1;
+        summary.lastGroupError = event.error || "unknown";
+      }
       break;
+    case "tab-group-created":
+      summary.tabGroupsCreated = (summary.tabGroupsCreated || 0) + 1;
+      summary.groupedTabsCreated = (summary.groupedTabsCreated || 0) + (event.tabCount || 0);
+      break;
+    case "tab-group-error":
+      summary.tabGroupErrors = (summary.tabGroupErrors || 0) + 1;
+      summary.lastGroupError = event.error || "unknown";
+      break;
+    case "sweep-window-skip": {
+      const skipReason = event.reason || "unknown";
+      summary.sweepWindowSkips = summary.sweepWindowSkips || {};
+      summary.sweepWindowSkips[skipReason] = (summary.sweepWindowSkips[skipReason] || 0) + 1;
+      break;
+    }
     case "sweep-window-deferred":
       summary.sweepDeferred = (summary.sweepDeferred || 0) + 1;
       break;
@@ -266,12 +306,38 @@ export const createRestoreDebug = (session, property) => {
   };
 };
 
-export const getRestoreDebug = () => makeSnapshot();
+export const getRestoreDebug = async () => {
+  await hydrated;
+  return makeSnapshot();
+};
+
+// popupからデバッグパネルを開き直す。既に開いていればフォーカスする。
+// データはstorage.sessionから復元されるので、閉じても失われない
+export const openRestoreDebugPanel = async () => {
+  await hydrated;
+  if (debugWindowId !== null) {
+    const existingWindow = await browser.windows.get(debugWindowId).catch(() => null);
+    if (existingWindow) {
+      await browser.windows.update(debugWindowId, { focused: true }).catch(() => {});
+      return true;
+    }
+  }
+  const debugWindow = await browser.windows.create({
+    url: browser.runtime.getURL(DEBUG_PAGE_PATH),
+    type: "popup",
+    width: 860,
+    height: 760,
+    focused: true
+  });
+  debugWindowId = debugWindow.id;
+  return true;
+};
 
 // デバッグパネルのClearボタン用。セッションごと破棄する — 次のイベントで
 // (復元なら復元セッション、スウィープならensureDebugSessionが)作り直される
 export const clearRestoreDebug = () => {
   activeRestoreDebug = null;
+  browser.storage.session.remove(PERSIST_KEY).catch(() => {});
   broadcast();
   return true;
 };

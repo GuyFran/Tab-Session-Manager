@@ -42,6 +42,8 @@ export default class WindowsArea extends Component {
 
   stop = windowId => browser.runtime.sendMessage({ message: "stopPreloadSweep", windowId });
 
+  openDebugPanel = () => browser.runtime.sendMessage({ message: "openRestoreDebugPanel" });
+
   render() {
     const sweepingIds = this.props.sweepStatus?.sweepingWindowIds || [];
     const remainingByWindow = this.props.sweepStatus?.remainingByWindow || {};
@@ -50,6 +52,13 @@ export default class WindowsArea extends Component {
       <div id="windowsArea">
         <div className="windowsHeader">
           <span className="heading">Open windows ({windows.length})</span>
+          <button
+            className="debugPanelButton"
+            onClick={this.openDebugPanel}
+            title="Open the restore/sweep debug panel (data kept for this browser session)"
+          >
+            🐞
+          </button>
           <button
             className="sweepAllButton"
             onClick={() => this.sweep(windows.map(w => w.id))}
