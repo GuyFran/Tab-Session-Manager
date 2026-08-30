@@ -193,35 +193,67 @@ const waitForUrlCommit = async (tabId, trace = null) => {
 // placeholderの代わりに生成直後のタブをdiscardして、読み込みを止める
 // 生成直後は破棄できないことがあるため、失敗したら一度だけ再試行する
 // Returns the discarded tab's id, which Chrome changes on discard, or null.
-const discardAfterCreate = async (tabId, trace = null) => {
-  await waitForUrlCommit(tabId, trace);
+//
+// URL保護(空白タブ対策): 大きなセッションや重い環境ではナビゲーション登録が
+// URL_COMMIT_TIMEOUT_MSを超えることがあり、そのままdiscardすると恒久的に
+// url="" のタブになる(ユーザ報告)。3段構えで守る:
+//   1. URLが確定しなければ意図したURLへ明示的に再ナビゲートして待ち直す
+//   2. それでも確定しなければdiscardを諦める(読み込みは続くが、後の手動
+//      スウィープが休止させる。空白で固定されるよりずっと良い)
+//   3. discard後にURLが消えていたら(hasUrl=false)、discard済みタブへ
+//      tabs.update({url})で復旧させ、確定を待ってからもう一度discardする
+const discardAfterCreate = async (tabId, intendedUrl = null, trace = null) => {
+  let committed = await waitForUrlCommit(tabId, trace);
+  if (!committed && intendedUrl) {
+    trace?.add("tab-url-renavigate", { tabId: tabId });
+    await browser.tabs.update(tabId, { url: intendedUrl }).catch(() => {});
+    committed = await waitForUrlCommit(tabId, trace);
+  }
+  if (!committed) {
+    log.warn(logDir, "discardAfterCreate() url never committed, skipping discard", tabId);
+    trace?.add("tab-discard-skipped-no-url", { tabId: tabId });
+    return null;
+  }
 
-  const tryDiscard = async () => {
+  const tryDiscard = async id => {
     try {
       // Chrome resolves discard() with the updated tab. Querying the tab again
       // can fail for an incognito tab even when discard itself succeeded, and
       // the discarded tab is given a NEW id, so the old one no longer resolves.
-      const discardedTab = await browser.tabs.discard(tabId);
+      const discardedTab = await browser.tabs.discard(id);
       const discarded = Boolean(discardedTab?.discarded);
       // Never record the URL itself — only whether one survived the discard.
       trace?.add("tab-discard-result", {
-        tabId: tabId,
+        tabId: id,
         discardedTabId: discardedTab?.id,
         discarded: discarded,
         hasUrl: Boolean(discardedTab?.url)
       });
       return discarded ? discardedTab : null;
     } catch (e) {
-      trace?.add("tab-discard-error", { tabId: tabId, message: e?.message || String(e) });
+      trace?.add("tab-discard-error", { tabId: id, message: e?.message || String(e) });
       return null;
     }
   };
 
-  const first = await tryDiscard();
+  // discard成功でもURLが失われていたら復旧を試みる
+  const repairIfBlank = async discardedTab => {
+    if (!discardedTab || discardedTab.url || !intendedUrl) return discardedTab;
+    const repairId = discardedTab.id ?? tabId;
+    log.warn(logDir, "discardAfterCreate() blank after discard, repairing", repairId);
+    trace?.add("tab-blank-repair", { tabId: repairId });
+    await browser.tabs.update(repairId, { url: intendedUrl }).catch(() => {});
+    const recommitted = await waitForUrlCommit(repairId, trace);
+    if (!recommitted) return discardedTab;
+    const rediscarded = await tryDiscard(repairId);
+    return rediscarded || discardedTab;
+  };
+
+  const first = await repairIfBlank(await tryDiscard(tabId));
   if (first) return first.id ?? null;
   trace?.add("tab-discard-retry", { tabId: tabId, delayMs: DISCARD_RETRY_DELAY_MS });
   await new Promise(resolve => setTimeout(resolve, DISCARD_RETRY_DELAY_MS));
-  const second = await tryDiscard();
+  const second = await repairIfBlank(await tryDiscard(tabId));
   if (second) return second.id ?? null;
   log.warn(logDir, "discardAfterCreate() failed", tabId);
   trace?.add("tab-discard-failed", { tabId: tabId });
@@ -476,7 +508,7 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         // discardが走る前に次のバッチが作られて大量のタブが同時に読み込まれる
         if (shouldDiscardAfterCreate) {
           // discard() gives the tab a new id; keep tabList pointing at the live tab.
-          const discardedId = await discardAfterCreate(newTab.id, trace);
+          const discardedId = await discardAfterCreate(newTab.id, tab.url, trace);
           if (discardedId != null) tabList[tab.id] = discardedId;
         }
         resolve();
@@ -496,7 +528,7 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         trace?.add("tab-created-fallback", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
         if (shouldDiscardAfterCreate) {
-          const discardedId = await discardAfterCreate(newTab.id, trace);
+          const discardedId = await discardAfterCreate(newTab.id, tab.url, trace);
           if (discardedId != null) tabList[tab.id] = discardedId;
         }
         resolve();

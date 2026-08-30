@@ -75,8 +75,9 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-29)
 
-- Version **7.4.42**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.43**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.43 — blank-URL fix:** discardAfterCreate honors its URL-commit wait — timeout re-navigates, then refuses to discard rather than blanking; post-discard blanks self-repair. Verified 0 blanks with 9 s-stalling pages.
 - **v7.4.42 — "Open windows" panel in the popup sidebar:** per-window Sweep/Stop rows + Sweep all (parallel), always visible above the session list.
 - **v7.4.41 — sweeps are manual-only.** No auto sweep after restore; header button = global parallel sweep of all windows, filter-row menu = per-window (ifPreloadAfterRestore is inert).
 - **v7.4.38 — parallel per-window sweeps + popup sweep menu.** Explicit tabs.reload() makes tabs load in unfocused windows; captureVisibleTab hangs are timeout-guarded (5 s). Two windows swept concurrently in 15 s (4/4+4/4).
