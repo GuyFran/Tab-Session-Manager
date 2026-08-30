@@ -251,6 +251,14 @@ export const createRestoreDebug = (session, property) => {
 
 export const getRestoreDebug = () => makeSnapshot();
 
+// デバッグパネルのClearボタン用。セッションごと破棄する — 次のイベントで
+// (復元なら復元セッション、スウィープならensureDebugSessionが)作り直される
+export const clearRestoreDebug = () => {
+  activeRestoreDebug = null;
+  broadcast();
+  return true;
+};
+
 export const downloadRestoreDebug = async () => {
   const restoreDebug = makeSnapshot();
   if (!restoreDebug) return false;

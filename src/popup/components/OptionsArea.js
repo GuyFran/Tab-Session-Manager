@@ -4,6 +4,7 @@ import "../styles/OptionsArea.scss";
 import SearchBar from "./SearchBar";
 import { generateTagLabel } from "../actions/generateTagLabel";
 import SearchIcon from "../icons/search.svg";
+import UpdateIcon from "../icons/update.svg";
 
 const alphabeticallySort = (a, b) => {
   if (a.name.toLowerCase() > b.name.toLowerCase()) return 1;
@@ -95,6 +96,22 @@ export default class OptionsArea extends Component {
     this.props.changeSort(sortValue);
   };
 
+  // 現在のウィンドウを手動でスウィープする(Headerのボタンと同じ動作)。
+  // スウィープ中の再クリックは停止
+  handleSweepClick = async () => {
+    const sweepStatus = this.props.sweepStatus || {};
+    if (sweepStatus.isSweeping) {
+      browser.runtime.sendMessage({ message: "stopPreloadSweep" });
+      return;
+    }
+    const currentWindow = await browser.windows.getCurrent().catch(() => null);
+    browser.runtime.sendMessage({
+      message: "startPreloadSweep",
+      windowIds: currentWindow ? [currentWindow.id] : undefined,
+      manual: true
+    });
+  };
+
   componentDidUpdate() {
     const tagsCount = countAllTags(this.props.sessions);
     if (!isHitFilter(this.props.filterValue, tagsCount)) this.props.changeFilter("_displayAll");
@@ -160,6 +177,18 @@ export default class OptionsArea extends Component {
               <option value="tabsAsc">{browser.i18n.getMessage("tabsAscLabel")}</option>
             </select>
           </div>
+          <button
+            className={`lineSweepButton ${this.props.sweepStatus?.isSweeping ? "sweeping" : ""}`}
+            onClick={this.handleSweepClick}
+            title={browser.i18n.getMessage(
+              this.props.sweepStatus?.isSweeping ? "stopPreloadSweepLabel" : "startPreloadSweepLabel"
+            )}
+          >
+            <UpdateIcon />
+            {this.props.sweepStatus?.isSweeping && this.props.sweepStatus.remainingCount > 0 && (
+              <span className="count">{this.props.sweepStatus.remainingCount}</span>
+            )}
+          </button>
           <button
             className="searchButton"
             onClick={() => this.props.toggleSearchBar()}

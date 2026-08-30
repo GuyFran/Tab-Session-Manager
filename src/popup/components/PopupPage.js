@@ -582,6 +582,7 @@ export default class PopupPage extends Component {
               optionsAreaRef={this.optionsAreaElement}
               searchBarRef={this.searchBarElement}
               sessionsAreaRef={this.sessionsAreaElement}
+              sweepStatus={this.state.sweepStatus}
             />
             <Error error={this.state.error} />
             <SessionsArea

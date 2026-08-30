@@ -76,5 +76,30 @@
         fill: var(--highlight);
       }
     }
+
+    .lineSweepButton {
+      width: 25px;
+      margin-left: 3px;
+      z-index: 1;
+      position: relative;
+      svg {
+        height: 16px;
+        fill: var(--sub-text);
+      }
+      &:hover svg,
+      &:focus svg {
+        fill: var(--highlight);
+      }
+      &.sweeping svg {
+        fill: var(--highlight);
+      }
+      .count {
+        position: absolute;
+        top: -4px;
+        right: -2px;
+        font-size: 10px;
+        color: var(--sub-text);
+      }
+    }
   }
 }

@@ -54,6 +54,11 @@ export default class RestoreDebugPage extends Component {
     this.setState({ downloadError: downloaded ? "" : "Download could not be created." });
   };
 
+  clearLog = async () => {
+    await browser.runtime.sendMessage({ message: "clearRestoreDebug" }).catch(() => {});
+    this.setState({ restoreDebug: null, copied: false, downloadError: "" });
+  };
+
   render() {
     const { restoreDebug, copied, downloadError } = this.state;
     if (!restoreDebug)
@@ -149,6 +154,7 @@ export default class RestoreDebugPage extends Component {
         <section className="controls">
           <button onClick={this.copyLog}>{copied ? "Copied" : "Copy complete debug log"}</button>
           <button onClick={this.downloadLog}>Download log</button>
+          <button onClick={this.clearLog}>Clear</button>
           <button onClick={() => window.close()}>Close</button>
           {downloadError && <span className="restoreError">{downloadError}</span>}
         </section>

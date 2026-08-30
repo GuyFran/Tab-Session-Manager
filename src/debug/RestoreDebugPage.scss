@@ -1,3 +1,13 @@
+// height:100%の連鎖が切れるとイベントログのflex:1が効かず、ページ全体が
+// 伸びてスクロールできなくなる。ビューポートに固定してログ側にスクロールを持たせる
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 .restoreDebug {
   color: var(--main-text);
   display: flex;
