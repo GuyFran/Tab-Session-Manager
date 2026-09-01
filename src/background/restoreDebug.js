@@ -233,10 +233,11 @@ browser.windows.onRemoved.addListener(windowId => {
 
 const appendEvent = (eventName, details = {}) => {
   if (!activeRestoreDebug || activeRestoreDebug.events.length >= MAX_EVENTS) return;
+  // 復元側イベントも含め全イベントをサニタイズする(タイトル内のURL断片対策)
   const event = {
     at: new Date().toISOString(),
     event: eventName,
-    ...details
+    ...sanitizeDetails(details)
   };
   activeRestoreDebug.events.push(event);
   updateSummary(event);
@@ -264,7 +265,7 @@ const ensureDebugSession = () => {
 // スウィープ/サムネイル側からデバッグパネルへイベントを送る入口。URLは記録しない
 export const addSweepDebugEvent = (eventName, details = {}) => {
   ensureDebugSession();
-  appendEvent(eventName, sanitizeDetails(details));
+  appendEvent(eventName, details);
 };
 
 export const createRestoreDebug = (session, property) => {

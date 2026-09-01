@@ -64,6 +64,9 @@ const updateBadge = () => {
   broadcastStatus();
 };
 
+// タブの識別子(URL無し): index + タイトル先頭48文字。sanitizerがURLらしき断片を潰す
+const tabRef = tab => ({ index: tab?.index, title: String(tab?.title || "").slice(0, 48) });
+
 const isRedirectPlaceholder = tab => {
   const parameter = returnReplaceParameter(tab.url);
   return parameter.isReplaced && parameter.state === "redirect";
@@ -297,10 +300,11 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabI
     await discardProcessedTab(placeholderTab.id, processedTabIds);
   } else {
     log.warn(logDir, "swapToPlaceholderAndDiscard() placeholder url never committed", placeholderTab.id);
-    addSweepDebugEvent("sweep-ph-commit-timeout", { tabId: placeholderTab.id });
+    addSweepDebugEvent("sweep-ph-commit-timeout", { tabId: placeholderTab.id, ...tabRef(tab) });
   }
   addSweepDebugEvent("sweep-tab-swapped", {
     oldTabId: tabId,
+    ...tabRef(tab),
     placeholderTabId: placeholderTab.id,
     hasThumbnail: !!thumbDataUrl,
     discarded: placeholderCommitted
@@ -365,7 +369,7 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
           .catch(e => log.warn(logDir, "sweepWindow() bg navigate FAILED", e?.message || String(e)));
       }
       const bgLoaded = await waitForLoad(nextTab.id, run);
-      addSweepDebugEvent("sweep-tab-bg-processed", { tabId: nextTab.id, status: bgLoaded?.status || "gone" });
+      addSweepDebugEvent("sweep-tab-bg-processed", { tabId: nextTab.id, status: bgLoaded?.status || "gone", ...tabRef(bgLoaded || nextTab) });
       await discardProcessedTab(nextTab.id, processedTabIds);
       if (run.remaining > 0) run.remaining--;
       updateBadge();
@@ -397,7 +401,7 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
     }
     addSweepDebugEvent("sweep-step", { step: "wait-load-start", tabId: nextTab.id });
     const loadedTab = await waitForLoad(nextTab.id, run);
-    addSweepDebugEvent("sweep-tab-loaded", { tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
+    addSweepDebugEvent("sweep-tab-loaded", { tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded, ...tabRef(loadedTab || nextTab) });
     if (loadedTab && loadedTab.status === "complete") {
       completedTabIds.add(nextTab.id);
       await sleep(RENDER_DELAY_MS);
@@ -415,7 +419,7 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
       }
       addSweepDebugEvent("sweep-step", { step: "capture-done", tabId: nextTab.id });
     } else {
-      addSweepDebugEvent("sweep-step", { step: "capture-skipped", tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded });
+      addSweepDebugEvent("sweep-step", { step: "capture-skipped", tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded, ...tabRef(loadedTab || nextTab) });
     }
     previousTabId = nextTab.id;
     if (run.remaining > 0) run.remaining--;

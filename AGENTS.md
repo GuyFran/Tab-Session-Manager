@@ -75,8 +75,9 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-08-29)
 
-- Version **7.4.45**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
+- Version **7.4.46**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
   (26 baseline plus the same toolchain warning for the debug stylesheet).
+- **v7.4.46 — failure events carry tab identity (index + 48-char title, URL-scrubbed); panel Export JSON button (client-side Blob, always works).**
 - **v7.4.45 — about:blank fixed at both sources:** the sweep swap now waits for the placeholder data:URL to commit before discarding (was fixed 300 ms — the actual regression), and saves fall back to pendingUrl for still-loading tabs; poisoned sessions are flagged with a savedBlankUrls tile/banner.
 - **v7.4.44 — debug panel: 🐞 reopen button in the popup, storage.session persistence across SW restarts, tab-group create/error tracking with tiles + last-error banner.**
 - **v7.4.43 — blank-URL fix:** discardAfterCreate honors its URL-commit wait — timeout re-navigates, then refuses to discard rather than blanking; post-discard blanks self-repair. Verified 0 blanks with 9 s-stalling pages.

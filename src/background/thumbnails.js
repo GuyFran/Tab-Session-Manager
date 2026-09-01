@@ -176,9 +176,11 @@ const enqueueCapture = task => {
 };
 
 export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => {
+  let capturedTab = null;
   try {
     if (!getSettings("ifCaptureThumbnails")) return;
     const [tab] = await browser.tabs.query({ active: true, windowId: windowId });
+    capturedTab = tab;
     if (!tab || !isCapturableUrl(tab.url) || tab.status !== "complete") {
       traceCapture(`skip pre-check w=${windowId} tab=${tab?.id} sweep=${fromSweep} status=${tab?.status}`, "thumb-skip", { reason: "pre-check", windowId, tabId: tab?.id, status: tab?.status, fromSweep });
       return;
@@ -222,7 +224,13 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
       pruneThumbnails();
     });
   } catch (e) {
-    traceCapture(`FAILED w=${windowId} sweep=${fromSweep} err=${e?.message}`, "thumb-failed", { windowId, fromSweep, error: e?.message || String(e) });
+    traceCapture(`FAILED w=${windowId} sweep=${fromSweep} err=${e?.message}`, "thumb-failed", {
+      windowId,
+      fromSweep,
+      error: e?.message || String(e),
+      index: capturedTab?.index,
+      title: String(capturedTab?.title || "").slice(0, 48)
+    });
     log.log(logDir, "captureActiveTab() skipped", e?.message);
   }
 };

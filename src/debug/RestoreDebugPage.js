@@ -54,6 +54,24 @@ export default class RestoreDebugPage extends Component {
     this.setState({ downloadError: downloaded ? "" : "Download could not be created." });
   };
 
+  // パネル自身(通常の拡張ページ)からBlobで保存する。SW経由のdownloads APIは
+  // MV3でdata:URLが失敗することがあるが、この経路は常に機能する
+  exportLog = () => {
+    const { restoreDebug } = this.state;
+    if (!restoreDebug) return;
+    const blob = new Blob([JSON.stringify(restoreDebug, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tsm-debug-${String(restoreDebug.startedAt).replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
   clearLog = async () => {
     await browser.runtime.sendMessage({ message: "clearRestoreDebug" }).catch(() => {});
     this.setState({ restoreDebug: null, copied: false, downloadError: "" });
@@ -219,7 +237,7 @@ export default class RestoreDebugPage extends Component {
 
         <section className="controls">
           <button onClick={this.copyLog}>{copied ? "Copied" : "Copy complete debug log"}</button>
-          <button onClick={this.downloadLog}>Download log</button>
+          <button onClick={this.exportLog}>Export JSON</button>
           <button onClick={this.clearLog}>Clear</button>
           <button onClick={() => window.close()}>Close</button>
           {downloadError && <span className="restoreError">{downloadError}</span>}
