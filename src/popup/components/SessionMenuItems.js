@@ -11,6 +11,7 @@ import {
 } from "../actions/controlSessions";
 import NewWindowIcon from "../icons/newWindow.svg";
 import EditIcon from "../icons/edit.svg";
+import MergeSessionsModalContent from "./MergeSessionsModalContent";
 
 export default props => {
   const handleOpenInNewWindow = () => {
@@ -33,6 +34,16 @@ export default props => {
   };
   const handleMakeCopySession = () => {
     makeCopySession(props.session.id);
+  };
+  const handleMergeSessions = () => {
+    props.openModal(
+      browser.i18n.getMessage("mergeSessionsLabel"),
+      <MergeSessionsModalContent
+        session={props.session}
+        closeModal={props.closeModal}
+        openNotification={props.openNotification}
+      />
+    );
   };
   const handleRegisterTracking = () => {
     sendTagAddMessage(props.session.id, "_tracking");
@@ -103,6 +114,13 @@ export default props => {
           {browser.i18n.getMessage("makeCopySessionLabel")}
         </button>
       </li>
+      {props.openModal && (
+        <li>
+          <button onClick={handleMergeSessions}>
+            {browser.i18n.getMessage("mergeSessionsLabel")}
+          </button>
+        </li>
+      )}
       <hr />
       <li>
         <button onClick={isTracking() ? handleRemoveTracking : handleRegisterTracking}>

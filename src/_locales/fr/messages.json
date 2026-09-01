@@ -206,6 +206,24 @@
   "makeCopySessionLabel": {
     "message": "Faire une copie de la session"
   },
+  "mergeSessionsLabel": {
+    "message": "Fusionner des sessions"
+  },
+  "mergeSessionsButtonLabel": {
+    "message": "Fusionner"
+  },
+  "discardDuplicateTabsLabel": {
+    "message": "Supprimer les onglets en double"
+  },
+  "mergedSessionLabel": {
+    "message": "Session fusionnée"
+  },
+  "sessionsMergedLabel": {
+    "message": "Les sessions ont été fusionnées en une nouvelle session"
+  },
+  "failedMergeSessionsLabel": {
+    "message": "Échec de la fusion des sessions"
+  },
   "registerTrackingLabel": {
     "message": "Surveiller les changements de fenêtre"
   },

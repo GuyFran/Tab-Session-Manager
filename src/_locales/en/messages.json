@@ -206,6 +206,24 @@
   "makeCopySessionLabel": {
     "message": "Make a copy of the session"
   },
+  "mergeSessionsLabel": {
+    "message": "Merge sessions"
+  },
+  "mergeSessionsButtonLabel": {
+    "message": "Merge"
+  },
+  "discardDuplicateTabsLabel": {
+    "message": "Discard duplicate tabs"
+  },
+  "mergedSessionLabel": {
+    "message": "Merged session"
+  },
+  "sessionsMergedLabel": {
+    "message": "The sessions were merged into a new session"
+  },
+  "failedMergeSessionsLabel": {
+    "message": "Failed to merge the sessions"
+  },
   "registerTrackingLabel": {
     "message": "Track window changes"
   },

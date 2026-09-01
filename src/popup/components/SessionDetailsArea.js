@@ -40,7 +40,13 @@ export default class SessionDetailsArea extends Component {
     this.props.openMenu(
       x,
       y,
-      <SessionMenuItems session={this.props.session} isTracking={this.props.isTracking} />
+      <SessionMenuItems
+        session={this.props.session}
+        isTracking={this.props.isTracking}
+        openModal={this.props.openModal}
+        closeModal={this.props.closeModal}
+        openNotification={this.props.openNotification}
+      />
     );
   };
 

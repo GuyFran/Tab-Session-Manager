@@ -203,6 +203,9 @@ export default class SessionsArea extends Component {
                 removeSession={removeSession}
                 handleSessionSelect={this.handleSessionSelect}
                 openMenu={openMenu}
+                openModal={this.props.openModal}
+                closeModal={this.props.closeModal}
+                openNotification={this.props.openNotification}
                 key={session.id}
               />
             )

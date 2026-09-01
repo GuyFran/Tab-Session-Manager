@@ -9,6 +9,7 @@ import { returnIncognitoPlaceholderParameter } from "src/background/incognitoPla
 import { queryTabGroups, isEnabledTabGroups } from "../../common/tabGroups";
 import { getSettings } from "src/settings/settings";
 import { compressDataUrl } from "../../common/compressDataUrl";
+import { mergeSessions } from "../../common/mergeSessions";
 
 const logDir = "popup/actions/controlSessions";
 
@@ -266,6 +267,23 @@ export const makeCopySession = async id => {
     message: "save",
     session: session
   });
+};
+
+export const mergeSessionsById = async (ids, name, discardDuplicates) => {
+  log.info(logDir, "mergeSessionsById()", ids, name, discardDuplicates);
+  const sessions = [];
+  for (const id of ids) {
+    const session = await getSessions(id);
+    if (session) sessions.push(session);
+  }
+  if (sessions.length < 2) return null;
+
+  const mergedSession = mergeSessions(sessions, name, discardDuplicates);
+  await browser.runtime.sendMessage({
+    message: "save",
+    session: mergedSession
+  });
+  return mergedSession;
 };
 
 export const sendExportSessionMessage = (id = null) => {

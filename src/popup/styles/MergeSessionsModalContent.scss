@@ -1,0 +1,63 @@
+.mergeSessionsModalContent {
+  .sessionsSelector {
+    max-height: 220px;
+    overflow-y: auto;
+    border: var(--button) solid 1px;
+    border-radius: 2px;
+    margin-bottom: 10px;
+
+    .sessionRow {
+      display: flex;
+      align-items: center;
+      padding: 4px 6px;
+      cursor: pointer;
+
+      &:hover {
+        background-color: var(--sub-bg);
+      }
+
+      input[type="checkbox"] {
+        width: auto;
+        margin: 0 8px 0 0;
+        flex-shrink: 0;
+      }
+
+      .sessionName {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-right: 8px;
+      }
+
+      .sessionInfo {
+        color: var(--sub-text);
+        font-size: 0.9em;
+        flex-shrink: 0;
+      }
+    }
+  }
+
+  .discardDuplicates {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    cursor: pointer;
+
+    input[type="checkbox"] {
+      width: auto;
+      margin: 0 8px 0 0;
+    }
+  }
+
+  .buttons {
+    .saveButton:disabled {
+      opacity: 0.5;
+      cursor: default;
+      &:hover,
+      &:focus {
+        border-color: var(--highlight);
+      }
+    }
+  }
+}

@@ -597,6 +597,9 @@ export default class PopupPage extends Component {
               removeSession={this.removeSession}
               selectSession={this.selectSession}
               openMenu={this.openMenu}
+              openModal={this.openModal}
+              closeModal={this.closeModal}
+              openNotification={this.openNotification}
               toggleSearchBar={this.toggleSearchBar}
               isInitSessions={this.state.isInitSessions}
               error={this.state.error}
@@ -627,6 +630,7 @@ export default class PopupPage extends Component {
               openMenu={this.openMenu}
               openModal={this.openModal}
               closeModal={this.closeModal}
+              openNotification={this.openNotification}
             />
           </div>
         </div>

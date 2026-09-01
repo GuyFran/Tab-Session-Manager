@@ -33,7 +33,16 @@ export default class Session extends Component {
     this.props.handleSessionSelect(this.props.session.id);
     const rect = e.target.getBoundingClientRect();
     const { x, y } = { x: e.pageX || rect.x, y: e.pageY || rect.y };
-    this.props.openMenu(x, y, <SessionMenuItems session={this.props.session} />);
+    this.props.openMenu(
+      x,
+      y,
+      <SessionMenuItems
+        session={this.props.session}
+        openModal={this.props.openModal}
+        closeModal={this.props.closeModal}
+        openNotification={this.props.openNotification}
+      />
+    );
     e.preventDefault();
   };
 
