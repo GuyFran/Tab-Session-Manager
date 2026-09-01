@@ -5,18 +5,31 @@ import mozlz4a from "mozlz4a";
 import { v4 as uuidv4 } from "uuid";
 import OptionContainer from "./OptionContainer";
 
+// Every failure path resolves { error: "<reason>" } instead of a silent undefined,
+// so the options page can show WHY a read failed. Success resolves { sessions }.
 const fileOpen = file => {
-  if (/(?:\.jsonlz4|\.baklz4)(-\d+)?$/.test(file.name.toLowerCase())) {
+  const lowerName = file.name.toLowerCase();
+  if (/(?:\.jsonlz4|\.baklz4)(-\d+)?$/.test(lowerName)) {
     // sessionstore.jsonlz4
     // previous.jsonlz4
     // recovery.baklz4
     // upgrade.jsonlz4-20211001010123
     return new Promise(resolve => {
       const reader = new FileReader();
-      reader.onload = () => {
-        let input = new Uint8Array(reader.result);
-        let output = mozlz4a.decompress(input);
-        return resolve(convertMozLz4Sessionstore(output));
+      reader.onerror = () => resolve({ error: `FileReader failed: ${reader.error}` });
+      reader.onload = async () => {
+        try {
+          let input = new Uint8Array(reader.result);
+          let output;
+          try {
+            output = mozlz4a.decompress(input);
+          } catch (e) {
+            return resolve({ error: `mozlz4 decompression failed: ${e.message || e}` });
+          }
+          return resolve({ sessions: await convertMozLz4Sessionstore(output) });
+        } catch (e) {
+          return resolve({ error: `${e.message || e}` });
+        }
       };
       reader.readAsArrayBuffer(file);
     });
@@ -24,29 +37,43 @@ const fileOpen = file => {
 
   return new Promise(resolve => {
     const reader = new FileReader();
+    reader.onerror = () => resolve({ error: `FileReader failed: ${reader.error}` });
     reader.onload = () => {
-      let text = reader.result;
-      if (file.name.toLowerCase().endsWith(".json")) {
-        // Ignore BOM
-        if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-        if (!isJSON(text)) return resolve();
+      try {
+        let text = reader.result;
+        if (lowerName.endsWith(".json")) {
+          // Ignore BOM
+          if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
-        let jsonFile = JSON.parse(text);
-        if (isTSM(jsonFile)) {
-          return resolve(parseSession(jsonFile));
+          let jsonFile;
+          try {
+            jsonFile = JSON.parse(text);
+          } catch (e) {
+            return resolve({ error: `JSON parse failed: ${e.message}` });
+          }
+
+          const tsmProblem = diagnoseTSM(jsonFile);
+          if (tsmProblem === null) {
+            return resolve({ sessions: parseSession(jsonFile) });
+          }
+          const sbProblem = diagnoseSessionBuddy(jsonFile);
+          if (sbProblem === null) {
+            return resolve({ sessions: convertSessionBuddy(jsonFile) });
+          }
+
+          return resolve({
+            error: `unrecognized JSON. As TSM export: ${tsmProblem}. As Session Buddy export: ${sbProblem}.`
+          });
         }
-        if (isSessionBuddy(jsonFile)) {
-          return resolve(convertSessionBuddy(jsonFile));
+
+        if (lowerName.endsWith(".session")) {
+          return resolve({ sessions: convertSessionManager(text) });
         }
 
-        return resolve();
+        return resolve({ error: "unsupported file extension (.json, .session, .jsonlz4, .baklz4)" });
+      } catch (e) {
+        return resolve({ error: `${e.message || e}` });
       }
-
-      if (file.name.toLowerCase().endsWith(".session")) {
-        return resolve(convertSessionManager(text));
-      }
-
-      return resolve();
     };
     reader.readAsText(file);
   });
@@ -67,18 +94,23 @@ const isArray = o => {
   return Object.prototype.toString.call(o) === "[object Array]";
 };
 
-const isTSM = file => {
-  if (!isArray(file)) return false;
+// Returns null if the file is a valid TSM export, otherwise a string explaining
+// the first problem found (which session, which keys are missing).
+const diagnoseTSM = file => {
+  if (!isArray(file))
+    return `top level is ${Object.prototype.toString.call(file).slice(8, -1)}, expected an array of sessions`;
 
   const correctKeys = ["windows", "tabsNumber", "name", "date", "tag", "sessionStartTime"];
-  for (const session of file) {
+  for (let i = 0; i < file.length; i++) {
+    const session = file[i];
+    if (session === null || typeof session !== "object")
+      return `session #${i + 1} is ${session === null ? "null" : typeof session}, expected an object`;
     const sessionKeys = Object.keys(session);
-    const isIncludes = value => {
-      return sessionKeys.includes(value);
-    };
-    if (!correctKeys.every(isIncludes)) return false;
+    const missing = correctKeys.filter(key => !sessionKeys.includes(key));
+    if (missing.length > 0)
+      return `session #${i + 1}${session.name ? ` ("${session.name}")` : ""} is missing key(s): ${missing.join(", ")}`;
   }
-  return true;
+  return null;
 };
 
 const parseSession = file => {
@@ -111,27 +143,27 @@ const parseSession = file => {
   return file;
 };
 
-const isSessionBuddy = file => {
+// Returns null if the file is a valid Session Buddy export, otherwise a string
+// explaining the first problem found.
+const diagnoseSessionBuddy = file => {
   const currentKeys = ["generated", "type", "windows"];
   const previousKeys = ["created", "generated", "gid", "id", "type", "windows"];
   const savedKeys = ["created", "generated", "gid", "id", "modified", "name", "type", "windows"];
-  if (file.hasOwnProperty("sessions")) {
-    return file.sessions.every(session => {
-      if (session.type == "current") {
-        return currentKeys.every(key => session.hasOwnProperty(key));
-      }
-      if (session.type == "previous") {
-        return previousKeys.every(key => session.hasOwnProperty(key));
-      }
-      if (session.type == "saved") {
-        return savedKeys.every(key => session.hasOwnProperty(key));
-      }
+  if (!file || typeof file !== "object" || !file.hasOwnProperty("sessions"))
+    return "no 'sessions' property";
+  if (!isArray(file.sessions)) return "'sessions' is not an array";
 
-      return false;
-    });
-  } else {
-    return false;
+  const requiredKeysByType = { current: currentKeys, previous: previousKeys, saved: savedKeys };
+  for (let i = 0; i < file.sessions.length; i++) {
+    const session = file.sessions[i];
+    const requiredKeys = requiredKeysByType[session?.type];
+    if (!requiredKeys)
+      return `session #${i + 1} has unknown type "${session?.type}" (expected current/previous/saved)`;
+    const missing = requiredKeys.filter(key => !session.hasOwnProperty(key));
+    if (missing.length > 0)
+      return `session #${i + 1} (type "${session.type}") is missing key(s): ${missing.join(", ")}`;
   }
+  return null;
 };
 
 const convertSessionBuddy = file => {
@@ -170,6 +202,10 @@ const convertSessionBuddy = file => {
 const convertSessionManager = file => {
   let session = {};
   const line = file.split(/\r\n|\r|\n/);
+  if (line.length < 5)
+    throw new Error(
+      `.session file has only ${line.length} line(s), expected at least 5 (Session Manager format)`
+    );
 
   session.windows = {};
   session.windowsNumber = 0;
@@ -181,7 +217,8 @@ const convertSessionManager = file => {
   session.sessionStartTime = parseInt(line[2].slice(10));
   session.id = uuidv4();
 
-  if (!isJSON(line[4])) return;
+  if (!isJSON(line[4]))
+    throw new Error(".session file line 5 is not valid JSON (Session Manager format)");
 
   const sessionData = JSON.parse(line[4]);
 
@@ -208,9 +245,16 @@ const convertSessionManager = file => {
 };
 
 const convertMozLz4Sessionstore = async file => {
-  const mozSession = JSON.parse(new TextDecoder().decode(file));
-  if (!(mozSession.version[0] === "sessionrestore" && mozSession.version[1] === 1)) {
-    return;
+  let mozSession;
+  try {
+    mozSession = JSON.parse(new TextDecoder().decode(file));
+  } catch (e) {
+    throw new Error(`decompressed lz4 payload is not valid JSON: ${e.message}`);
+  }
+  if (!(mozSession?.version?.[0] === "sessionrestore" && mozSession.version[1] === 1)) {
+    throw new Error(
+      `unsupported sessionstore version: ${JSON.stringify(mozSession?.version)} (expected ["sessionrestore", 1])`
+    );
   }
 
   let session = {};
@@ -261,12 +305,14 @@ const convertMozLz4Sessionstore = async file => {
   return [session];
 };
 
-const getSessionsState = sessions => {
+const getSessionsState = (sessions, error) => {
   const sessionLabel = browser.i18n.getMessage("sessionLabel").toLowerCase();
   const sessionsLabel = browser.i18n.getMessage("sessionsLabel").toLowerCase();
   let sessionsState;
-  if (sessions == undefined) sessionsState = browser.i18n.getMessage("readFailedMessage");
-  else if (sessions.length <= 1) sessionsState = `${sessions.length} ${sessionLabel}`;
+  if (sessions == undefined) {
+    sessionsState = browser.i18n.getMessage("readFailedMessage");
+    if (error) sessionsState += ` — ${error}`;
+  } else if (sessions.length <= 1) sessionsState = `${sessions.length} ${sessionLabel}`;
   else sessionsState = `${sessions.length} ${sessionsLabel}`;
   return sessionsState;
 };
@@ -285,11 +331,13 @@ export default class ImportSessionsComponent extends Component {
     if (files == undefined) return;
 
     for (const file of files) {
-      const sessions = await fileOpen(file);
+      const result = (await fileOpen(file)) || {};
+      const sessions = result.sessions;
+      if (result.error) console.error(`[TSM import] ${file.name}: ${result.error}`);
 
       const importedFiles = this.state.importedFiles.concat({
         name: file.name,
-        state: getSessionsState(sessions)
+        state: getSessionsState(sessions, result.error)
       });
       let importedSessions;
       if (sessions === undefined) importedSessions = this.state.importedSessions;
