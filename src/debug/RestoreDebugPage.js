@@ -99,6 +99,11 @@ export default class RestoreDebugPage extends Component {
             warning={summary.discardErrors > 0}
           />
           <SummaryItem
+            label="Blank in saved data"
+            value={summary.savedBlankUrls}
+            warning={summary.savedBlankUrls > 0}
+          />
+          <SummaryItem
             label="Blank (URL lost)"
             value={summary.blankTabs}
             warning={summary.blankTabs > 0}
@@ -179,6 +184,16 @@ export default class RestoreDebugPage extends Component {
             The restored window was not visible, so thumbnails could not be captured
             (Chrome refuses to render hidden windows). The sweep will resume automatically
             the next time that window is focused — bring it to the front and keep it visible.
+          </div>
+        )}
+
+        {summary.savedBlankUrls > 0 && (
+          <div className="restoreError">
+            {summary.savedBlankUrls} tab{summary.savedBlankUrls === 1 ? "" : "s"} in the SAVED
+            session have no URL stored (session was saved while those tabs were still loading,
+            or was damaged by an older bug). They can only open as about:blank — the restore
+            cannot recover them. Fix: reload those tabs, then re-save the session (saving now
+            records the pending URL, so this cannot happen again).
           </div>
         )}
 

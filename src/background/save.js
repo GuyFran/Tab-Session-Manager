@@ -56,6 +56,13 @@ export async function loadCurrentSession(name, tag, property) {
 
     if (session.windows[tab.windowId] == undefined) session.windows[tab.windowId] = {};
 
+    // 読み込み中のタブはurlが空/about:blankで、実際の行き先はpendingUrlにしか無い。
+    // そのまま保存するとセッションにabout:blankが焼き込まれ、以後の復元が
+    // 全てabout:blankになる(ユーザ報告)。pendingUrlで補完して保存する
+    if ((!tab.url || tab.url === "about:blank") && tab.pendingUrl) {
+      tab.url = tab.pendingUrl;
+    }
+
     //replacedPageなら元のページを保存
     const parameter = returnReplaceParameter(tab.url);
     if (parameter.isReplaced) {

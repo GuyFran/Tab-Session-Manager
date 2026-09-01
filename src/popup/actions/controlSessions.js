@@ -164,6 +164,11 @@ export const addCurrentWindow = async (id, isTracking = false) => {
     if (tab.openerTabId) tab.openerTabId = updatedTabIdMap[tab.openerTabId];
 
     //replasedページならURLを更新
+    // 読み込み中のタブはpendingUrlにしか実URLが無い
+    if ((!tab.url || tab.url === "about:blank") && tab.pendingUrl) {
+      tab.url = tab.pendingUrl;
+    }
+
     const replacedParams = returnReplaceParameter(tab.url);
     if (replacedParams.isReplaced) {
       tab.url = replacedParams.url;

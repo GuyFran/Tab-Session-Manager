@@ -341,6 +341,16 @@ async function createTabs(session, win, currentWindow, isAddtoCurrentWindow = fa
     sortedTabs.push(session.windows[win][tab]);
   }
 
+  // 保存データ自体にURLの無いタブ(過去の不具合や読み込み中保存で汚染されたセッション)を
+  // 検出して知らせる。復元では修復できない — about:blankのまま開くしかない
+  const savedBlankCount = sortedTabs.filter(
+    tab => !tab.url || tab.url === "about:blank"
+  ).length;
+  if (savedBlankCount > 0) {
+    trace?.add("saved-blank-urls", { savedWindowId: win, count: savedBlankCount });
+    log.warn(logDir, "createTabs() saved session contains blank URLs", win, savedBlankCount);
+  }
+
   sortedTabs.sort((a, b) => {
     return a.index - b.index;
   });

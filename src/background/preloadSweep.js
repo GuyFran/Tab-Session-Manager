@@ -272,13 +272,38 @@ const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabI
   }
   await browser.tabs.remove(tabId).catch(() => {});
   addSweepDebugEvent("sweep-step", { step: "swap-removed", tabId });
-  // data:ページのURL確定を待ってからdiscardする
-  await sleep(300);
-  await discardProcessedTab(placeholderTab.id, processedTabIds);
+  // data:URLのナビゲーション登録を確認してからdiscardする。以前の固定300ms待ちは
+  // 大きなサムネイル入りURLや並行スウィープの負荷下では間に合わず、discardが
+  // 未登録の遷移を破棄してabout:blankのタブ(実URLもタイトルも喪失)を残していた
+  // (ユーザ報告)。確定しない場合はdiscardを諦める — placeholderは自己完結の
+  // 軽量ページなので、休止されなくても表示は正しいまま
+  const deadline = Date.now() + 5000;
+  let placeholderCommitted = false;
+  while (Date.now() < deadline) {
+    const phTab = await browser.tabs.get(placeholderTab.id).catch(() => null);
+    if (!phTab) break;
+    if ((phTab.url || "").startsWith("data:")) {
+      placeholderCommitted = true;
+      break;
+    }
+    await sleep(100);
+  }
+  addSweepDebugEvent("sweep-step", {
+    step: "swap-ph-commit",
+    tabId: placeholderTab.id,
+    committed: placeholderCommitted
+  });
+  if (placeholderCommitted) {
+    await discardProcessedTab(placeholderTab.id, processedTabIds);
+  } else {
+    log.warn(logDir, "swapToPlaceholderAndDiscard() placeholder url never committed", placeholderTab.id);
+    addSweepDebugEvent("sweep-ph-commit-timeout", { tabId: placeholderTab.id });
+  }
   addSweepDebugEvent("sweep-tab-swapped", {
     oldTabId: tabId,
     placeholderTabId: placeholderTab.id,
-    hasThumbnail: !!thumbDataUrl
+    hasThumbnail: !!thumbDataUrl,
+    discarded: placeholderCommitted
   });
 };
 

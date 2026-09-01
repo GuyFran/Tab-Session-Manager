@@ -95,6 +95,7 @@ const makeDefaultSummary = (windows = [], totalTabs = 0) => ({
   groupErrors: 0,
   lastGroupError: null,
   sweepWindowSkips: {},
+  savedBlankUrls: 0,
   sweepDeferred: 0,
   lastThumbError: null
 });
@@ -135,6 +136,9 @@ const updateSummary = event => {
     case "tab-group-error":
       summary.tabGroupErrors = (summary.tabGroupErrors || 0) + 1;
       summary.lastGroupError = event.error || "unknown";
+      break;
+    case "saved-blank-urls":
+      summary.savedBlankUrls = (summary.savedBlankUrls || 0) + (event.count || 0);
       break;
     case "sweep-window-skip": {
       const skipReason = event.reason || "unknown";
