@@ -228,8 +228,7 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
       windowId,
       fromSweep,
       error: e?.message || String(e),
-      index: capturedTab?.index,
-      title: String(capturedTab?.title || "").slice(0, 48)
+      index: capturedTab?.index
     });
     log.log(logDir, "captureActiveTab() skipped", e?.message);
   }

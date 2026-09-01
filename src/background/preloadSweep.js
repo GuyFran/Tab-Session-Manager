@@ -64,8 +64,8 @@ const updateBadge = () => {
   broadcastStatus();
 };
 
-// タブの識別子(URL無し): index + タイトル先頭48文字。sanitizerがURLらしき断片を潰す
-const tabRef = tab => ({ index: tab?.index, title: String(tab?.title || "").slice(0, 48) });
+// タブの識別子。URLもタイトルも記録しない — ウィンドウ内の位置のみ
+const tabRef = tab => ({ index: tab?.index });
 
 const isRedirectPlaceholder = tab => {
   const parameter = returnReplaceParameter(tab.url);

@@ -168,12 +168,8 @@ const isEnabledWindowTitle = browserInfo().name == "Firefox";
 const isEnabledPlaceholder = currentWindow =>
   !(browserInfo().name === "Chrome" && currentWindow.incognito);
 
-// どのタブの話かをURL無しで特定できるようにする識別子(index + タイトル先頭48文字)。
-// タイトル内にURLらしき文字列があってもrestoreDebugのsanitizerが記録前に潰す
-const tabRef = tab => ({
-  index: tab?.index,
-  title: String(tab?.title || "").slice(0, 48)
-});
+// どのタブの話かを特定する識別子。URLもタイトルも記録しない — ウィンドウ内の位置のみ
+const tabRef = tab => ({ index: tab?.index });
 
 const DISCARD_RETRY_DELAY_MS = 500;
 const URL_COMMIT_TIMEOUT_MS = 3000;
