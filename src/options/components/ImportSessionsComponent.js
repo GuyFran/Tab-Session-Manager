@@ -317,13 +317,78 @@ const getSessionsState = (sessions, error) => {
   return sessionsState;
 };
 
+const IMPORT_LOG_KEY = "importDebugLog";
+const IMPORT_LOG_MAX = 300;
+
+const formatLogTime = ms => {
+  const d = new Date(ms);
+  const pad = (n, w = 2) => String(n).padStart(w, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+};
+
 export default class ImportSessionsComponent extends Component {
   constructor() {
     super();
     this.state = {
       importedFiles: [],
-      importedSessions: []
+      importedSessions: [],
+      importLog: [],
+      copyState: ""
     };
+  }
+
+  async componentDidMount() {
+    try {
+      const stored = await browser.storage.local.get(IMPORT_LOG_KEY);
+      if (Array.isArray(stored?.[IMPORT_LOG_KEY])) {
+        this.setState({ importLog: stored[IMPORT_LOG_KEY] });
+      }
+    } catch (e) {}
+  }
+
+  appendLog(level, text) {
+    const entry = { time: Date.now(), level, text };
+    if (level === "error") console.error(`[TSM import] ${text}`);
+    else console.log(`[TSM import] ${text}`);
+    this.setState(
+      prev => ({ importLog: prev.importLog.concat(entry).slice(-IMPORT_LOG_MAX) }),
+      () => {
+        browser.storage.local.set({ [IMPORT_LOG_KEY]: this.state.importLog }).catch(() => {});
+      }
+    );
+  }
+
+  logText() {
+    return this.state.importLog
+      .map(e => `${formatLogTime(e.time)} ${e.level === "error" ? "ERROR" : "info "} ${e.text}`)
+      .join("\n");
+  }
+
+  async copyLog() {
+    const text = this.logText();
+    try {
+      await navigator.clipboard.writeText(text);
+      this.setState({ copyState: "✔ copied" });
+    } catch (e) {
+      // clipboard API can be refused without focus; fall back to execCommand
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        this.setState({ copyState: "✔ copied" });
+      } catch (e2) {
+        this.setState({ copyState: `copy failed: ${e2.message || e2}` });
+      }
+    }
+    setTimeout(() => this.setState({ copyState: "" }), 2500);
+  }
+
+  clearLog() {
+    this.setState({ importLog: [] });
+    browser.storage.local.remove(IMPORT_LOG_KEY).catch(() => {});
   }
 
   async readSessions(e) {
@@ -331,9 +396,20 @@ export default class ImportSessionsComponent extends Component {
     if (files == undefined) return;
 
     for (const file of files) {
+      this.appendLog("info", `reading "${file.name}" (${file.size.toLocaleString()} bytes)`);
+      const startedAt = Date.now();
       const result = (await fileOpen(file)) || {};
       const sessions = result.sessions;
-      if (result.error) console.error(`[TSM import] ${file.name}: ${result.error}`);
+      const elapsed = Date.now() - startedAt;
+      if (result.error) {
+        this.appendLog("error", `"${file.name}" read FAILED after ${elapsed} ms: ${result.error}`);
+      } else {
+        const tabs = (sessions || []).reduce((sum, s) => sum + (s?.tabsNumber || 0), 0);
+        this.appendLog(
+          "info",
+          `"${file.name}" read OK in ${elapsed} ms: ${sessions.length} session(s), ${tabs} tab(s)`
+        );
+      }
 
       const importedFiles = this.state.importedFiles.concat({
         name: file.name,
@@ -348,6 +424,8 @@ export default class ImportSessionsComponent extends Component {
         importedSessions: importedSessions
       });
     }
+    // allow re-selecting the same file after a failure
+    e.target.value = "";
   }
 
   async importSessions() {
@@ -360,16 +438,30 @@ export default class ImportSessionsComponent extends Component {
           message: "import",
           importSessions: sessions
         });
+        this.appendLog("info", `sent ${sessions.length} session(s) to background for saving`);
       } catch (e) {
         //セッションが巨大だとsendMessageに失敗する
         //その場合は2分割して送信する
+        if (sessions.length <= 1) {
+          this.appendLog(
+            "error",
+            `import of session "${sessions[0]?.name}" FAILED (cannot split further): ${e.message || e}`
+          );
+          return;
+        }
+        this.appendLog(
+          "error",
+          `sendMessage failed for ${sessions.length} session(s) (${e.message || e}) — splitting in half and retrying`
+        );
         const midIndex = Math.floor(sessions.length / 2);
         await sendImportMessage(sessions.slice(0, midIndex));
         await sendImportMessage(sessions.slice(midIndex, sessions.length + 1));
       }
     };
 
+    this.appendLog("info", `importing ${this.state.importedSessions.length} session(s)…`);
     await sendImportMessage(this.state.importedSessions);
+    this.appendLog("info", "import finished");
 
     alert(browser.i18n.getMessage("importMessage"));
     this.clearSessions();
@@ -399,6 +491,45 @@ export default class ImportSessionsComponent extends Component {
             onClick={this.clearSessions.bind(this)}
           />
         </div>
+      </div>
+    );
+
+    const log = this.state.importLog;
+    const importLogPanel = (
+      <div style={{ margin: "10px 0 0 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <p style={{ fontWeight: "bold", margin: 0 }}>Import log</p>
+          <input type="button" value="Copy logs" onClick={this.copyLog.bind(this)} />
+          <input type="button" value="Clear" onClick={this.clearLog.bind(this)} />
+          {this.state.copyState && <span className="caption">{this.state.copyState}</span>}
+        </div>
+        {log.length === 0 ? (
+          <p className="caption">No import activity recorded yet.</p>
+        ) : (
+          <pre
+            style={{
+              maxHeight: "260px",
+              overflow: "auto",
+              background: "rgba(128, 128, 128, 0.08)",
+              border: "1px solid rgba(128, 128, 128, 0.35)",
+              borderRadius: "4px",
+              padding: "8px",
+              margin: "6px 0 0 0",
+              fontSize: "11px",
+              lineHeight: "1.5",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              userSelect: "text"
+            }}
+          >
+            {log.map((entry, index) => (
+              <div key={index} style={entry.level === "error" ? { color: "#d32f2f" } : null}>
+                {formatLogTime(entry.time)} {entry.level === "error" ? "ERROR" : "info "}{" "}
+                {entry.text}
+              </div>
+            ))}
+          </pre>
+        )}
       </div>
     );
 
@@ -446,6 +577,7 @@ export default class ImportSessionsComponent extends Component {
             {this.state.importedFiles.length > 0 ? buttons : ""}
           </ul>
         </OptionContainer>
+        {importLogPanel}
       </div>
     );
   }
