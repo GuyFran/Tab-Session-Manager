@@ -60,9 +60,16 @@ const fileOpen = file => {
           if (sbProblem === null) {
             return resolve({ sessions: convertSessionBuddy(jsonFile) });
           }
+          const sb3Problem = diagnoseSessionBuddy3(jsonFile);
+          if (sb3Problem === null) {
+            return resolve({ sessions: convertSessionBuddy3(jsonFile) });
+          }
 
           return resolve({
-            error: `unrecognized JSON. As TSM export: ${tsmProblem}. As Session Buddy export: ${sbProblem}.`
+            error:
+              `unrecognized JSON. As TSM export: ${tsmProblem}. ` +
+              `As Session Buddy export: ${sbProblem}. ` +
+              `As Session Buddy v3 export: ${sb3Problem}.`
           });
         }
 
@@ -191,6 +198,81 @@ const convertSessionBuddy = file => {
       session.windowsInfo[window.id] = window;
       delete session.windowsInfo[window.id].tabs;
       session.windowsNumber++;
+    }
+
+    sessions.push(session);
+  }
+
+  return sessions;
+};
+
+// Session Buddy v3 export: { collections: [ { title, folders: [ { links: [ {url, title, favIconUrl} ], ...windowGeometry } ] } ] }
+// Returns null if the file matches, otherwise a string explaining the first problem found.
+const diagnoseSessionBuddy3 = file => {
+  if (!file || typeof file !== "object" || !file.hasOwnProperty("collections"))
+    return "no 'collections' property";
+  if (!isArray(file.collections)) return "'collections' is not an array";
+  for (let i = 0; i < file.collections.length; i++) {
+    const collection = file.collections[i];
+    if (!isArray(collection?.folders)) return `collection #${i + 1} has no 'folders' array`;
+    for (let j = 0; j < collection.folders.length; j++) {
+      if (!isArray(collection.folders[j]?.links))
+        return `collection #${i + 1} folder #${j + 1} has no 'links' array`;
+    }
+  }
+  return null;
+};
+
+const convertSessionBuddy3 = file => {
+  const sessions = [];
+  for (const collection of file.collections) {
+    // Collection titles look like "Sep 1, 2026  •  5:19 PM" — try to recover the date,
+    // fall back to now if the title is edited or localized
+    const titleAsDate = Date.parse(
+      String(collection.title || "")
+        .replace(/[•   ]/g, " ")
+        .replace(/\s+/g, " ")
+    );
+    const date = isNaN(titleAsDate) ? Date.now() : titleAsDate;
+
+    const session = {
+      windows: {},
+      windowsNumber: 0,
+      windowsInfo: {},
+      tabsNumber: 0,
+      name: collection.title || "Session Buddy collection",
+      date: date,
+      lastEditedTime: Date.now(),
+      tag: [],
+      sessionStartTime: date,
+      id: uuidv4()
+    };
+
+    let windowId = 1;
+    for (const folder of collection.folders) {
+      session.windows[windowId] = {};
+      let index = 0;
+      for (const link of folder.links) {
+        // open.js decides the incognito state of the restored window from its
+        // tabs' incognito flag, not from windowsInfo — stamp it on every tab
+        session.windows[windowId][index] = {
+          id: index,
+          index: index,
+          windowId: windowId,
+          url: link.url,
+          title: link.title || link.url,
+          favIconUrl: link.favIconUrl,
+          active: !!link.active,
+          pinned: !!link.pinned,
+          incognito: !!folder.incognito
+        };
+        index++;
+      }
+      const { links, ...windowInfo } = folder;
+      session.windowsInfo[windowId] = { ...windowInfo, id: windowId };
+      session.tabsNumber += index;
+      session.windowsNumber++;
+      windowId++;
     }
 
     sessions.push(session);
@@ -543,7 +625,7 @@ export default class ImportSessionsComponent extends Component {
             <p className="caption">
               - Tab Session Manager (.json)
               <br />
-              - Session Buddy (.json)
+              - Session Buddy (.json, v3 collections included)
               <br />
               - Session Manager (.session)
               <br />
