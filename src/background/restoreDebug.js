@@ -1,6 +1,9 @@
 import browser from "webextension-polyfill";
 
-const MAX_EVENTS = 2000;
+// リングバッファ上限。226タブの復元+スウィープで約3,600イベント出るため、
+// 2,000では途中で記録が止まりサマリーまで凍結していた(実測)。上限超過時は
+// 最古のイベントを捨て、サマリーは常に更新し続ける
+const MAX_EVENTS = 8000;
 const DEBUG_PAGE_PATH = "debug/index.html";
 
 let activeRestoreDebug = null;
@@ -34,6 +37,7 @@ const makeSnapshot = () => {
     extensionId: activeRestoreDebug.extensionId,
     requestedProperty: activeRestoreDebug.requestedProperty,
     summary: { ...activeRestoreDebug.summary },
+    eventsDropped: activeRestoreDebug.eventsDropped || 0,
     events: activeRestoreDebug.events
   };
 };
@@ -232,7 +236,7 @@ browser.windows.onRemoved.addListener(windowId => {
 });
 
 const appendEvent = (eventName, details = {}) => {
-  if (!activeRestoreDebug || activeRestoreDebug.events.length >= MAX_EVENTS) return;
+  if (!activeRestoreDebug) return;
   // 復元側イベントも含め全イベントをサニタイズする(タイトル内のURL断片対策)
   const event = {
     at: new Date().toISOString(),
@@ -240,6 +244,11 @@ const appendEvent = (eventName, details = {}) => {
     ...sanitizeDetails(details)
   };
   activeRestoreDebug.events.push(event);
+  // リングバッファ: 上限を超えたら最古を捨てる(サマリーは全イベントを反映し続ける)
+  if (activeRestoreDebug.events.length > MAX_EVENTS) {
+    activeRestoreDebug.events.splice(0, activeRestoreDebug.events.length - MAX_EVENTS);
+    activeRestoreDebug.eventsDropped = (activeRestoreDebug.eventsDropped || 0) + 1;
+  }
   updateSummary(event);
   broadcast();
 };

@@ -248,8 +248,11 @@ export default class RestoreDebugPage extends Component {
             <pre key={`${event.at}-${index}`}>{JSON.stringify(event)}</pre>
           ))}
         </section>
-        {events.length > visibleEvents.length && (
-          <footer>Showing the latest {visibleEvents.length} of {events.length} live events.</footer>
+        {(events.length > visibleEvents.length || restoreDebug.eventsDropped > 0) && (
+          <footer>
+            Showing the latest {visibleEvents.length} of {events.length} kept events
+            {restoreDebug.eventsDropped > 0 && ` (${restoreDebug.eventsDropped} oldest dropped — counters include them)`}.
+          </footer>
         )}
       </main>
     );
