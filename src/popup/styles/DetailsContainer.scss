@@ -70,6 +70,24 @@
             fill: var(--highlight);
           }
         }
+        .moveButton {
+          &.moveUp svg {
+            transform: rotate(-90deg);
+          }
+          &.moveDown svg {
+            transform: rotate(90deg);
+          }
+          &:disabled {
+            cursor: default;
+            svg {
+              opacity: 0.3;
+            }
+          }
+          &:not(:disabled):hover svg,
+          &:not(:disabled):focus svg {
+            fill: var(--highlight);
+          }
+        }
       }
     }
 

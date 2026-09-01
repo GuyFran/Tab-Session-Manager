@@ -239,6 +239,12 @@
   "editWindowLabel": {
     "message": "Edit a window"
   },
+  "moveWindowUpLabel": {
+    "message": "Move window up"
+  },
+  "moveWindowDownLabel": {
+    "message": "Move window down"
+  },
   "addCurrentTabLabel": {
     "message": "Add current tab"
   },

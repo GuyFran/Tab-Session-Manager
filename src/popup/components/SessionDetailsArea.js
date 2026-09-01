@@ -85,6 +85,7 @@ export default class SessionDetailsArea extends Component {
       isTracking,
       removeWindow,
       removeTab,
+      moveWindow,
       openModal,
       closeModal,
       tagList,
@@ -157,6 +158,7 @@ export default class SessionDetailsArea extends Component {
           searchWords={searchWords}
           removeWindow={removeWindow}
           removeTab={removeTab}
+          moveWindow={moveWindow}
           openMenu={openMenu}
         />
       </div>

@@ -17,7 +17,7 @@ import {
   sendUndoMessage,
   sendEndTrackingByWindowDeleteMessage
 } from "../actions/controlSessions";
-import { deleteWindow, deleteTab } from "../../common/editSessions.js";
+import { deleteWindow, deleteTab, moveWindow as moveSessionWindow } from "../../common/editSessions.js";
 import openUrl from "../actions/openUrl";
 import Header from "./Header";
 import OptionsArea from "./OptionsArea";
@@ -476,6 +476,12 @@ export default class PopupPage extends Component {
     }
   };
 
+  moveWindow = async (session, winId, offset) => {
+    const editedSession = moveSessionWindow(session, winId, offset);
+    if (editedSession === null) return;
+    await sendSessionUpdateMessage(editedSession);
+  };
+
   removeTab = async (session, winId, tabId) => {
     try {
       const editedSession = deleteTab(session, winId, tabId);
@@ -627,6 +633,7 @@ export default class PopupPage extends Component {
               removeSession={this.removeSession}
               removeWindow={this.removeWindow}
               removeTab={this.removeTab}
+              moveWindow={this.moveWindow}
               openMenu={this.openMenu}
               openModal={this.openModal}
               closeModal={this.closeModal}

@@ -6,6 +6,7 @@ import { returnReplaceURL, replacePage } from "./replace.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { createRestoreDebug } from "./restoreDebug.js";
+import { getWindowsOrder } from "../common/editSessions.js";
 
 const logDir = "background/open";
 
@@ -32,7 +33,7 @@ export async function openSession(session, property = "openInNewWindow") {
   let restoredWindowIds = [];
   tabList = {};
   try {
-    for (let win in session.windows) {
+    for (const win of getWindowsOrder(session)) {
     const isIncognitoWindow = Object.values(session.windows[win]).some(tab => tab.incognito);
     trace?.add("saved-window", { windowId: win, incognito: isIncognitoWindow });
     const openInCurrentWindow = async () => {

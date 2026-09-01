@@ -7,7 +7,9 @@ import PlusIcon from "../icons/plus.svg";
 import CollapseIcon from "../icons/collapse.svg";
 import EditIcon from "../icons/edit.svg";
 import WindowMenuItems from "./WindowMenuItems";
+import TriangleIcon from "../icons/triangle.svg";
 import WindowIcon from "../icons/window.svg";
+import { getWindowsOrder } from "../../common/editSessions.js";
 import WindowIncognitoChromeIcon from "../icons/window_incognito_chrome.svg";
 import WindowIncognitoFirefoxIcon from "../icons/window_incognito_firefox.svg";
 
@@ -32,6 +34,19 @@ const RemoveButton = props => (
     title={browser.i18n.getMessage("remove")}
   >
     <PlusIcon />
+  </button>
+);
+
+const MoveButton = props => (
+  <button
+    className={`moveButton ${props.direction === -1 ? "moveUp" : "moveDown"}`}
+    onClick={props.handleClick}
+    disabled={props.disabled}
+    title={browser.i18n.getMessage(
+      props.direction === -1 ? "moveWindowUpLabel" : "moveWindowDownLabel"
+    )}
+  >
+    <TriangleIcon />
   </button>
 );
 
@@ -92,6 +107,11 @@ class WindowContainer extends Component {
   handleRemoveClick = () => {
     const { windowId, handleRemoveWindow } = this.props;
     handleRemoveWindow(windowId);
+  };
+
+  handleMoveClick = offset => {
+    const { windowId, handleMoveWindow } = this.props;
+    handleMoveWindow(windowId, offset);
   };
 
   handleOpenClick = () => {
@@ -155,6 +175,20 @@ class WindowContainer extends Component {
             <span className="tabsNumber">{this.getTabsNumberText()}</span>
           </div>
           <div className="buttonsContainer">
+            {windowsNumber > 1 && (
+              <MoveButton
+                direction={-1}
+                disabled={this.props.orderIndex === 0}
+                handleClick={() => this.handleMoveClick(-1)}
+              />
+            )}
+            {windowsNumber > 1 && (
+              <MoveButton
+                direction={1}
+                disabled={this.props.orderIndex === windowsNumber - 1}
+                handleClick={() => this.handleMoveClick(1)}
+              />
+            )}
             <EditButton handleClick={this.handleEditClick} />
             {windowsNumber > 1 && <RemoveButton handleClick={this.handleRemoveClick} />}
           </div>
@@ -177,7 +211,7 @@ class WindowContainer extends Component {
 }
 
 export default props => {
-  const { session, searchWords, removeWindow, removeTab, openMenu } = props;
+  const { session, searchWords, removeWindow, removeTab, moveWindow, openMenu } = props;
 
   if (!session.windows) return null;
 
@@ -189,19 +223,25 @@ export default props => {
     removeTab(session, windowId, tabId);
   };
 
+  const handleMoveWindow = (windowId, offset) => {
+    moveWindow(session, windowId, offset);
+  };
+
   return (
     <div className="detailsContainer scrollbar">
-      {Object.keys(session.windows).map(windowId => (
+      {getWindowsOrder(session).map((windowId, orderIndex) => (
         <WindowContainer
           tabs={session.windows[windowId]}
           windowTitle={session?.windowsInfo?.[windowId]?.title}
           windowId={windowId}
+          orderIndex={orderIndex}
           sessionId={session.id}
           windowsNumber={session.windowsNumber}
           allTabsNumber={session.tabsNumber}
           searchWords={searchWords}
           handleRemoveWindow={handleRemoveWindow}
           handleRemoveTab={handleRemoveTab}
+          handleMoveWindow={handleMoveWindow}
           openMenu={openMenu}
           key={`${session.id}${windowId}`}
         />

@@ -5,6 +5,32 @@ import log from "loglevel";
 
 const logDir = "common/editSessions";
 
+// windowsOrder はユーザーが並べ替えた場合のみ存在する。無ければ
+// Object.keys(session.windows) の順(数値キー昇順)がそのまま表示/復元順
+export const getWindowsOrder = session => {
+  const ids = Object.keys(session.windows);
+  const saved = Array.isArray(session.windowsOrder)
+    ? session.windowsOrder.map(String).filter(id => ids.includes(id))
+    : [];
+  for (const id of ids) {
+    if (!saved.includes(id)) saved.push(id);
+  }
+  return saved;
+};
+
+export const moveWindow = (session, winId, offset) => {
+  log.info(logDir, "moveWindow()", winId, offset);
+  const order = getWindowsOrder(session);
+  const from = order.indexOf(String(winId));
+  const to = from + offset;
+  if (from === -1 || to < 0 || to >= order.length) return null;
+
+  session = clone(session);
+  order.splice(to, 0, ...order.splice(from, 1));
+  session.windowsOrder = order;
+  return session;
+};
+
 export const deleteWindow = (session, winId) => {
   log.info(logDir, "deleteWindow()", session, winId);
   session = clone(session);
@@ -14,6 +40,8 @@ export const deleteWindow = (session, winId) => {
 
   delete session.windows[winId];
   if (session.windowsInfo !== undefined) delete session.windowsInfo[winId];
+  if (Array.isArray(session.windowsOrder))
+    session.windowsOrder = session.windowsOrder.filter(id => String(id) !== String(winId));
 
   return session;
 };
