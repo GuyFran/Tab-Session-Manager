@@ -3,6 +3,8 @@ import browserInfo from "browser-info";
 import log from "loglevel";
 import { getSettings } from "src/settings/settings";
 import { returnReplaceURL, replacePage } from "./replace.js";
+import { getThumbnailDataUrl } from "./thumbnails.js";
+import { buildIncognitoPlaceholderUrl } from "./incognitoPlaceholder.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { createRestoreDebug } from "./restoreDebug.js";
@@ -492,6 +494,9 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
 
     //Lazy loading
     let shouldDiscardAfterCreate = false;
+    // discard後に空白化したタブの復旧に使うURL。data:URLプレースホルダは
+    // tabs.update()が黙って無視するため復旧できず、その場合はnullにする
+    let discardRepairUrl = tab.url;
     if (getSettings("ifLazyLoading")) {
       if (getSettings("isUseDiscarded") && isEnabledDiscarded) {
         if (!createOption.active && !createOption.pinned) {
@@ -501,7 +506,26 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
       } else if (isEnabledPlaceholder(currentWindow)) {
         createOption.url = returnReplaceURL("redirect", tab.title, tab.url, tab.favIconUrl);
       } else if (!createOption.active) {
-        // placeholderを開けないウィンドウでは、生成直後にdiscardして遅延読み込み相当の動作にする
+        // placeholderを開けないウィンドウ(Chromeのincognito)。キャプチャ済みの
+        // サムネイルがあれば、実URLを読み込まずに最初からスウィープ後と同じ
+        // data:URLプレースホルダ(サムネイル埋め込み)で生成する — 復元後の
+        // 手動スウィープはサムネイル未取得のタブだけで済む。
+        // 無いタブは従来どおり実URL+discardで開き、スウィープ対象のまま残す
+        const thumbDataUrl = /^https?:/.test(tab.url || "")
+          ? await getThumbnailDataUrl(tab.url)
+          : "";
+        if (thumbDataUrl) {
+          createOption.url = buildIncognitoPlaceholderUrl({
+            url: tab.url,
+            title: tab.title,
+            favIconUrl: tab.favIconUrl,
+            thumbDataUrl: thumbDataUrl
+          });
+          discardRepairUrl = null;
+          trace?.add("tab-placeholder-from-cache", { savedTabId: tab.id, ...tabRef(tab) });
+        }
+        // placeholderは自己完結の軽量ページなのでdiscardは必須ではないが、
+        // スウィープ後の状態(discard済み)と揃える
         shouldDiscardAfterCreate = true;
       }
     }
@@ -531,7 +555,7 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         // discardが走る前に次のバッチが作られて大量のタブが同時に読み込まれる
         if (shouldDiscardAfterCreate) {
           // discard() gives the tab a new id; keep tabList pointing at the live tab.
-          const discardedId = await discardAfterCreate(newTab.id, tab.url, trace, tabRef(tab));
+          const discardedId = await discardAfterCreate(newTab.id, discardRepairUrl, trace, tabRef(tab));
           if (discardedId != null) tabList[tab.id] = discardedId;
         }
         resolve();
@@ -551,7 +575,7 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
         trace?.add("tab-created-fallback", { windowId: currentWindow.id, tabId: newTab.id });
         tabList[tab.id] = newTab.id;
         if (shouldDiscardAfterCreate) {
-          const discardedId = await discardAfterCreate(newTab.id, tab.url, trace, tabRef(tab));
+          const discardedId = await discardAfterCreate(newTab.id, discardRepairUrl, trace, tabRef(tab));
           if (discardedId != null) tabList[tab.id] = discardedId;
         }
         resolve();
