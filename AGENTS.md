@@ -73,10 +73,16 @@ lift it — verified 2026-08-27. Any automated run must load the extension throu
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## Current status (2026-08-29)
+## Current status (2026-09-11)
 
-- Version **7.4.48**; dev build verified clean: 0 errors, 27 known Sass-loader deprecation warnings
-  (26 baseline plus the same toolchain warning for the debug stylesheet).
+- Version **7.4.54** in both manifests (latest commit `2607fe1`). The last recorded clean dev build
+  in the log is 7.4.48 (0 errors, 27 known Sass-loader deprecation warnings — 26 baseline plus the
+  debug stylesheet); 7.4.49–7.4.54 landed since and their build/runtime status is not re-verified in
+  this docs pass — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.54 — incognito tabs restore straight to hibernated data:URL placeholders with their cached thumbnails; no post-restore re-sweep is needed.**
+- **v7.4.53 — reorder windows inside a saved session (per-window up/down buttons; the order is honored on restore).**
+- **v7.4.50–v7.4.52 — import pipeline: Session Buddy v3 (collections) import, a persistent "Import log" options panel (Copy logs / Clear), and "Read failed — <reason>" per-format diagnostics instead of silent/hung reads.**
+- **v7.4.49 — merge sessions: combine several saved sessions into a new one, with optional duplicate-tab cleanup.**
 - **v7.4.48 — debug log is an 8,000-event ring buffer; summary counters always keep counting (the old 2,000 cap froze recording mid-sweep on big sessions).**
 - **v7.4.47 — trace identity is index-only (no URL, no title); panel Export JSON button (client-side Blob, always works).**
 - **v7.4.45 — about:blank fixed at both sources:** the sweep swap now waits for the placeholder data:URL to commit before discarding (was fixed 300 ms — the actual regression), and saves fall back to pendingUrl for still-loading tabs; poisoned sessions are flagged with a savedBlankUrls tile/banner.
