@@ -75,10 +75,19 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-09-16)
 
-- Version **7.4.57** in both manifests. Last clean dev build: **7.4.57** (0 errors, 29 warnings,
+- Version **7.4.58** in both manifests. Last clean dev build: **7.4.58** (0 errors, 29 warnings,
   all Sass-loader deprecations; the count was 27 at 7.4.48 and the two extra appeared somewhere in
-  7.4.49–7.4.56, which were never individually re-verified). Runtime status of 7.4.49–7.4.57 is
+  7.4.49–7.4.56, which were never individually re-verified). Runtime status of 7.4.49–7.4.58 is
   not verified in a real browser — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.58 — PH-01 fixed: incognito placeholder URLs are kept under 60 KB** (Chrome's session
+  file blanks any navigation URL over ~63 KB). Thumbnails are now encoded through a width/quality
+  ladder to ≤ 36,000 bytes (`encodeToFit` in thumbnails.js); oversized legacy thumbnails are
+  re-encoded on first use; `buildIncognitoPlaceholder()` measures the URL as Chrome stores it and
+  drops favicon → thumbnail → shortens title if needed, never the real URL. Verified in node for
+  the builder and in a browser for the ladder (a plain article page was already 61 KB under the
+  old encode; text-heavy pages now land at 480 px wide). Restart behaviour at scale is part of
+  SCALE-01. Debug panel gained thumbnail-provenance tiles: cached/no-reload, restored from cache,
+  hibernated with/without thumb, legacy shrunk, placeholder trimmed, largest placeholder.
 - **v7.4.57 — sweep scales linearly with tab count (user: 800-tab sweep crashed Chrome).** The
   sweep used to re-query the whole window before every tab (quadratic, and each incognito
   placeholder tab carries a data:URL of tens to hundreds of KB); it now snapshots target ids once

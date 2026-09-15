@@ -11,7 +11,7 @@ import {
 import { showBadge, hideBadge } from "./setBadge";
 import { addSweepDebugEvent } from "./restoreDebug";
 import {
-  buildIncognitoPlaceholderUrl,
+  buildIncognitoPlaceholder,
   isIncognitoPlaceholderUrl
 } from "./incognitoPlaceholder";
 
@@ -277,14 +277,27 @@ const swapToPlaceholderAndDiscard = async (
   addSweepDebugEvent("sweep-step", { step: "swap-start", tabId });
   const thumbDataUrl = await getThumbnailDataUrl(tab.url);
   addSweepDebugEvent("sweep-step", { step: "swap-thumb-read", tabId });
-  const placeholderUrl = buildIncognitoPlaceholderUrl({
+  const placeholder = buildIncognitoPlaceholder({
     url: tab.url,
     title: tab.title,
     favIconUrl: tab.favIconUrl,
     thumbDataUrl: thumbDataUrl
   });
+  // 60KBに収めるために何かを落とした場合は記録する(PH-01)。サムネイルは
+  // 収まるように圧縮されているので、通常はfaviconも含めて落ちない
+  if (placeholder.thumbnailDropped || placeholder.faviconDropped || !placeholder.fits) {
+    addSweepDebugEvent("sweep-placeholder-trimmed", {
+      tabId,
+      bytes: placeholder.bytes,
+      fits: placeholder.fits,
+      thumbnailDropped: placeholder.thumbnailDropped,
+      faviconDropped: placeholder.faviconDropped,
+      titleShortened: placeholder.titleShortened,
+      ...tabRef(tab)
+    });
+  }
   const placeholderTab = await browser.tabs
-    .create({ windowId: tab.windowId, index: tab.index, url: placeholderUrl, active: false })
+    .create({ windowId: tab.windowId, index: tab.index, url: placeholder.url, active: false })
     .catch(e => {
       log.warn(logDir, "swapToPlaceholderAndDiscard() create failed", e?.message || String(e));
       return null;
@@ -347,7 +360,8 @@ const swapToPlaceholderAndDiscard = async (
     oldTabId: tabId,
     ...tabRef(tab),
     placeholderTabId: placeholderTab.id,
-    hasThumbnail: !!thumbDataUrl,
+    hasThumbnail: !!thumbDataUrl && !placeholder.thumbnailDropped,
+    placeholderBytes: placeholder.bytes,
     discarded: placeholderCommitted
   });
 };

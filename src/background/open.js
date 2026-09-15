@@ -4,7 +4,7 @@ import log from "loglevel";
 import { getSettings } from "src/settings/settings";
 import { returnReplaceURL, replacePage } from "./replace.js";
 import { getThumbnailDataUrl } from "./thumbnails.js";
-import { buildIncognitoPlaceholderUrl } from "./incognitoPlaceholder.js";
+import { buildIncognitoPlaceholder } from "./incognitoPlaceholder.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { createRestoreDebug } from "./restoreDebug.js";
@@ -515,14 +515,24 @@ function openTab(tab, currentWindow, isOpenToLastIndex = false, trace = null) {
           ? await getThumbnailDataUrl(tab.url)
           : "";
         if (thumbDataUrl) {
-          createOption.url = buildIncognitoPlaceholderUrl({
+          // 60KB上限(PH-01)に収まらなければbuildIncognitoPlaceholderがfavicon→
+          // サムネイルの順に落とす。何を落としたかはトレースに残す
+          const placeholder = buildIncognitoPlaceholder({
             url: tab.url,
             title: tab.title,
             favIconUrl: tab.favIconUrl,
             thumbDataUrl: thumbDataUrl
           });
+          createOption.url = placeholder.url;
           discardRepairUrl = null;
-          trace?.add("tab-placeholder-from-cache", { savedTabId: tab.id, ...tabRef(tab) });
+          trace?.add("tab-placeholder-from-cache", {
+            savedTabId: tab.id,
+            placeholderBytes: placeholder.bytes,
+            fits: placeholder.fits,
+            thumbnailDropped: placeholder.thumbnailDropped,
+            faviconDropped: placeholder.faviconDropped,
+            ...tabRef(tab)
+          });
         }
         // placeholderは自己完結の軽量ページなのでdiscardは必須ではないが、
         // スウィープ後の状態(discard済み)と揃える

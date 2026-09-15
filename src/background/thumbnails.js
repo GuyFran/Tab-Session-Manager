@@ -2,6 +2,7 @@ import browser from "webextension-polyfill";
 import log from "loglevel";
 import { getSettings } from "src/settings/settings";
 import { addSweepDebugEvent } from "./restoreDebug";
+import { MAX_PLACEHOLDER_THUMBNAIL_BYTES } from "./incognitoPlaceholder";
 
 const logDir = "background/thumbnails";
 
@@ -80,17 +81,19 @@ const openDB = () => {
   });
 };
 
-const putThumbnail = async (url, blob) => {
+const putThumbnailRecord = async record => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const request = db
       .transaction(STORE_NAME, "readwrite")
       .objectStore(STORE_NAME)
-      .put({ url: url, blob: blob, date: Date.now() });
+      .put(record);
     request.onsuccess = () => resolve();
     request.onerror = e => reject(e);
   });
 };
+
+const putThumbnail = (url, blob) => putThumbnailRecord({ url: url, blob: blob, date: Date.now() });
 
 // 上限を超えたら古いサムネイルから削除する
 const pruneThumbnails = async () => {
@@ -114,18 +117,71 @@ const pruneThumbnails = async () => {
 
 const isCapturableUrl = url => /^https?:\/\//.test(url || "");
 
+// 縮小・再圧縮の段階(幅, JPEG品質)。placeholderのURL上限に収まる最初の段階を採用する
+// (MAX_PLACEHOLDER_THUMBNAIL_BYTES、PH-01: 60KBを超えるURLはChromeのセッション
+// ファイルに保存されず再起動後に空白タブになる)。幅より先に品質を大きく落とすと
+// 全面表示でブロックノイズが目立つため、品質は0.4前後を下限にして幅を段階的に落とす。
+// 最終段は文字の多いページでも確実に収まる
+const ENCODE_LADDER = [
+  [CAPTURE_WIDTH, 0.6],
+  [CAPTURE_WIDTH, 0.5],
+  [1280, 0.5],
+  [1280, 0.4],
+  [1024, 0.45],
+  [1024, 0.4],
+  [800, 0.45],
+  [800, 0.4],
+  [640, 0.4],
+  [480, 0.4],
+  [320, 0.35]
+];
+
+const encodeToFit = async (bitmap, maxBytes) => {
+  let canvas = null;
+  let blob = null;
+  for (const [width, quality] of ENCODE_LADDER) {
+    const scale = Math.min(1, width / bitmap.width);
+    const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+    const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+    // 元画像が段階の幅より小さい間は同じキャンバスを使い回し、品質だけ下げる
+    if (!canvas || canvas.width !== targetWidth) {
+      canvas = new OffscreenCanvas(targetWidth, targetHeight);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+    }
+    blob = await canvas.convertToBlob({ type: "image/jpeg", quality: quality });
+    if (blob.size <= maxBytes) break;
+  }
+  return blob;
+};
+
 // captureVisibleTabはjpegのdataUrlを返すので、保存前に縮小してBlob化する
 const downscale = async dataUrl => {
   const blob = await (await fetch(dataUrl)).blob();
   const bitmap = await createImageBitmap(blob);
-  const scale = Math.min(1, CAPTURE_WIDTH / bitmap.width);
-  const canvas = new OffscreenCanvas(
-    Math.max(1, Math.round(bitmap.width * scale)),
-    Math.max(1, Math.round(bitmap.height * scale))
-  );
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return await canvas.convertToBlob({ type: "image/jpeg", quality: 0.6 });
+  try {
+    return await encodeToFit(bitmap, MAX_PLACEHOLDER_THUMBNAIL_BYTES);
+  } finally {
+    bitmap.close();
+  }
+};
+
+// v7.4.58より前に保存されたサムネイルは上限を超えていることがある(1600px・品質0.6で
+// 実ページは80〜200KBになり得た)。初回利用時に一度だけ再圧縮して保存し直す。
+// dateは元のまま(pruneの古い順を保つ)
+const shrinkStoredThumbnail = async record => {
+  const bitmap = await createImageBitmap(record.blob);
+  let blob;
+  try {
+    blob = await encodeToFit(bitmap, MAX_PLACEHOLDER_THUMBNAIL_BYTES);
+  } finally {
+    bitmap.close();
+  }
+  await putThumbnailRecord({ ...record, blob: blob });
+  traceCapture(`shrunk bytes=${record.blob.size}->${blob.size}`, "thumb-shrunk", {
+    from: record.blob.size,
+    to: blob.size
+  });
+  return blob;
 };
 
 // ServiceWorker再起動でリセットされるが、スロットリング用途なので問題ない
@@ -268,7 +324,9 @@ export const getThumbnailDataUrl = async url => {
       request.onerror = e => reject(e);
     });
     if (!record || !record.blob) return "";
-    const buffer = new Uint8Array(await record.blob.arrayBuffer());
+    let blob = record.blob;
+    if (blob.size > MAX_PLACEHOLDER_THUMBNAIL_BYTES) blob = await shrinkStoredThumbnail(record);
+    const buffer = new Uint8Array(await blob.arrayBuffer());
     let binary = "";
     for (let i = 0; i < buffer.length; i += 8192) {
       binary += String.fromCharCode(...buffer.subarray(i, i + 8192));

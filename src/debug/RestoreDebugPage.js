@@ -133,6 +133,29 @@ export default class RestoreDebugPage extends Component {
             warning={summary.thumbFailed > 0}
           />
           <SummaryItem label="Thumb skipped (benign)" value={summary.thumbSkipped} />
+          <SummaryItem label="Cached thumb, no reload" value={summary.cachedThumbSkips || 0} />
+          <SummaryItem label="Restored from cache" value={summary.restoredFromCache || 0} />
+          <SummaryItem label="Hibernated with thumb" value={summary.placeholdersWithThumb || 0} />
+          <SummaryItem
+            label="Hibernated without thumb"
+            value={summary.placeholdersWithoutThumb || 0}
+            warning={(summary.placeholdersWithoutThumb || 0) > 0}
+          />
+          <SummaryItem label="Legacy thumbs shrunk" value={summary.thumbShrunk || 0} />
+          <SummaryItem
+            label="Placeholder trimmed"
+            value={summary.placeholderTrimmed || 0}
+            warning={(summary.placeholderTrimmed || 0) > 0}
+          />
+          <SummaryItem
+            label="Largest placeholder"
+            value={
+              summary.placeholderMaxBytes
+                ? `${(summary.placeholderMaxBytes / 1000).toFixed(1)} KB`
+                : "—"
+            }
+            warning={(summary.placeholderMaxBytes || 0) > 60000}
+          />
           <SummaryItem
             label="Sweeps deferred"
             value={summary.sweepDeferred}
@@ -194,6 +217,18 @@ export default class RestoreDebugPage extends Component {
         {summary.lastThumbError && (
           <div className="restoreError">
             Last thumbnail failure: {summary.lastThumbError}
+          </div>
+        )}
+
+        {((summary.placeholdersWithoutThumb || 0) > 0 || (summary.placeholderTrimmed || 0) > 0) && (
+          <div className="skipExplainer">
+            Thumbnail bookkeeping: "Cached thumb, no reload" = sweep found a saved thumbnail and
+            did not reload the tab; "Restored from cache" = restore placed the tab straight onto a
+            placeholder with its saved thumbnail; "Hibernated with/without thumb" = placeholders
+            created by restore + sweep, split by whether an image made it in. "Without thumb"
+            means the capture failed (see Thumb failures) or the image was dropped to keep the
+            placeholder URL under 60 KB ("Placeholder trimmed" — Chrome's session file blanks any
+            URL over ~63 KB, so a trimmed placeholder still restores correctly after a restart).
           </div>
         )}
 

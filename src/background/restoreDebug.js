@@ -106,7 +106,16 @@ const makeDefaultSummary = (windows = [], totalTabs = 0) => ({
   sweepWindowSkips: {},
   savedBlankUrls: 0,
   sweepDeferred: 0,
-  lastThumbError: null
+  lastThumbError: null,
+  // サムネイルの出どころ(ユーザ要望: キャッシュ済みが何件、placeholderに載ったのが
+  // 何件、載らなかったのが何件かを一目で)
+  cachedThumbSkips: 0, // スウィープ: サムネイル済みで再読込しなかったタブ
+  restoredFromCache: 0, // 復元: キャッシュ済みサムネイルで直接placeholderにしたタブ
+  placeholdersWithThumb: 0, // placeholderにサムネイルが載ったタブ(復元+スウィープ)
+  placeholdersWithoutThumb: 0, // placeholderにサムネイルが載らなかったタブ
+  thumbShrunk: 0, // 旧版の大きなサムネイルを60KB上限に再圧縮した件数(PH-01)
+  placeholderTrimmed: 0, // 60KBに収めるためfavicon/サムネイルを落とした件数(PH-01)
+  placeholderMaxBytes: 0 // 生成したplaceholder URLの最大バイト数(60,000未満のはず)
 });
 
 const updateSummary = event => {
@@ -157,6 +166,32 @@ const updateSummary = event => {
     }
     case "sweep-window-deferred":
       summary.sweepDeferred = (summary.sweepDeferred || 0) + 1;
+      break;
+    case "sweep-skip-cached-thumb":
+      summary.cachedThumbSkips = (summary.cachedThumbSkips || 0) + 1;
+      break;
+    case "tab-placeholder-from-cache":
+      summary.restoredFromCache = (summary.restoredFromCache || 0) + 1;
+      if (event.thumbnailDropped)
+        summary.placeholdersWithoutThumb = (summary.placeholdersWithoutThumb || 0) + 1;
+      else summary.placeholdersWithThumb = (summary.placeholdersWithThumb || 0) + 1;
+      if (event.thumbnailDropped || event.faviconDropped)
+        summary.placeholderTrimmed = (summary.placeholderTrimmed || 0) + 1;
+      if ((event.placeholderBytes || 0) > (summary.placeholderMaxBytes || 0))
+        summary.placeholderMaxBytes = event.placeholderBytes;
+      break;
+    case "sweep-tab-swapped":
+      if (event.hasThumbnail)
+        summary.placeholdersWithThumb = (summary.placeholdersWithThumb || 0) + 1;
+      else summary.placeholdersWithoutThumb = (summary.placeholdersWithoutThumb || 0) + 1;
+      if ((event.placeholderBytes || 0) > (summary.placeholderMaxBytes || 0))
+        summary.placeholderMaxBytes = event.placeholderBytes;
+      break;
+    case "sweep-placeholder-trimmed":
+      summary.placeholderTrimmed = (summary.placeholderTrimmed || 0) + 1;
+      break;
+    case "thumb-shrunk":
+      summary.thumbShrunk = (summary.thumbShrunk || 0) + 1;
       break;
     case "restore-routing":
       activeRestoreDebug.phase = "restoring";
