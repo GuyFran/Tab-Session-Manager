@@ -49,6 +49,26 @@
     }
   }
 
+  .forceRefreshToggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px 4px;
+    color: var(--sub-text);
+    font-size: 11px;
+    cursor: pointer;
+
+    input {
+      flex-shrink: 0;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    &:hover {
+      color: var(--main-text);
+    }
+  }
+
   .windowRow {
     display: flex;
     align-items: center;

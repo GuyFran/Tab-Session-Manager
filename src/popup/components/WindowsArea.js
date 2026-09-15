@@ -1,14 +1,16 @@
 import React, { Component } from "react";
 import browser from "webextension-polyfill";
+import { getSettings, setSettings } from "src/settings/settings";
 import "../styles/WindowsArea.scss";
 import UpdateIcon from "../icons/update.svg";
 
 // 開いているウィンドウの一覧と、ウィンドウ単位/全ウィンドウの手動スウィープ操作。
 // スウィープの起動方法はここ(+ヘッダーのグローバルボタン)のみ — 自動スウィープは無い
 export default class WindowsArea extends Component {
-  state = { windows: [], currentWindowId: null };
+  state = { windows: [], currentWindowId: null, forceRefresh: false };
 
   componentDidMount() {
+    this.setState({ forceRefresh: !!getSettings("ifForceRefreshThumbnailsOnSweep") });
     this.refresh();
     this.timer = setInterval(this.refresh, 3000);
   }
@@ -42,6 +44,13 @@ export default class WindowsArea extends Component {
 
   stop = windowId => browser.runtime.sendMessage({ message: "stopPreloadSweep", windowId });
 
+  // 既定ではサムネイル済みのタブは読み込み直さない。ONにすると全タブを再読込・再キャプチャする
+  toggleForceRefresh = e => {
+    const forceRefresh = e.target.checked;
+    this.setState({ forceRefresh });
+    setSettings("ifForceRefreshThumbnailsOnSweep", forceRefresh);
+  };
+
   openDebugPanel = () => browser.runtime.sendMessage({ message: "openRestoreDebugPanel" });
 
   render() {
@@ -68,6 +77,17 @@ export default class WindowsArea extends Component {
             Sweep all
           </button>
         </div>
+        <label
+          className="forceRefreshToggle"
+          title="Off (default): sweeping skips tabs that already have a saved thumbnail — they are not reloaded. On: sweeping reloads every tab and re-captures a fresh thumbnail."
+        >
+          <input
+            type="checkbox"
+            checked={this.state.forceRefresh}
+            onChange={this.toggleForceRefresh}
+          />
+          <span>Re-capture thumbnails on sweep</span>
+        </label>
         {windows.map(w => {
           const isSweeping = sweepingIds.includes(w.id);
           const remaining = remainingByWindow[w.id];

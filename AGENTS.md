@@ -75,10 +75,11 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-09-11)
 
-- Version **7.4.55** in both manifests. The last recorded clean dev build
+- Version **7.4.56** in both manifests. The last recorded clean dev build
   in the log is 7.4.48 (0 errors, 27 known Sass-loader deprecation warnings — 26 baseline plus the
-  debug stylesheet); 7.4.49–7.4.55 landed since and their build/runtime status is not re-verified in
+  debug stylesheet); 7.4.49–7.4.56 landed since and their build/runtime status is not re-verified in
   this docs pass — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.56 — the `ifForceRefreshThumbnailsOnSweep` toggle is surfaced in the popup's "Open windows" panel ("Re-capture thumbnails on sweep"), next to the sweep controls; still mirrored on the options page. Writes via setSettings; the background sweep reads it live through the storage.onChanged listener.**
 - **v7.4.55 — the sweep skips tabs that already have a cached thumbnail by default (no reload): normal placeholders stay as placeholders, incognito discarded tabs swap straight to a data:URL placeholder using the cached thumbnail. New setting `ifForceRefreshThumbnailsOnSweep` (off by default) forces every tab to reload and re-capture. See `hasThumbnail()` in thumbnails.js and `shouldSkipForCachedThumbnail()` in preloadSweep.js.**
 - **v7.4.54 — incognito tabs restore straight to hibernated data:URL placeholders with their cached thumbnails; no post-restore re-sweep is needed.**
 - **v7.4.53 — reorder windows inside a saved session (per-window up/down buttons; the order is honored on restore).**
