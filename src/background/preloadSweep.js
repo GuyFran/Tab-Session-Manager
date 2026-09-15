@@ -23,18 +23,30 @@ const FOCUS_RECHECK_MS = 3000;
 // フォーカスが外れるのを待つ上限。超えたらフォーカス中でもスウィープを進める
 const FOCUS_WAIT_MAX_MS = 10 * 1000;
 const RENDER_DELAY_MS = 500;
+// 対象タブの再探索(ウィンドウ全体のquery)を1スウィープで行う上限回数
+const MAX_TARGET_PASSES = 3;
+// 同時にスウィープするウィンドウ数の既定値(設定 preloadSweepMaxParallelWindows)
+const DEFAULT_MAX_PARALLEL_WINDOWS = 2;
+// 並行上限に達しているときに順番待ちのウィンドウが空きを確認する間隔
+const QUEUE_POLL_MS = 1000;
 
-// ウィンドウ単位の並行スウィープ。windowId → { stop, remaining }
+// ウィンドウ単位の並行スウィープ。windowId → { stop, started, remaining }
 // キャプチャは共通のキュー(thumbnails.js、600ms間隔)を通るため、並行しても
-// Chromeのキャプチャ割当(2回/秒)は超えない
+// Chromeのキャプチャ割当(2回/秒)は超えない。started=false は並行上限待ち
 const activeSweeps = new Map();
 
 export const isPreloadSweeping = () => activeSweeps.size > 0;
 // background.jsのhandleReplace抑制はスウィープ中のウィンドウ由来のイベントに限定する
 // (全ウィンドウを抑制すると、ユーザが他ウィンドウでクリックしたplaceholderが
-// スウィープ終了まで一切遷移しなくなる)
+// スウィープ終了まで一切遷移しなくなる)。順番待ち中のウィンドウも抑制しない —
+// 待っている間にユーザがクリックしたplaceholderは通常どおり遷移させる
 export const getSweepingWindowIds = () =>
-  [...activeSweeps.entries()].filter(([, run]) => !run.stop).map(([id]) => id);
+  [...activeSweeps.entries()].filter(([, run]) => run.started && !run.stop).map(([id]) => id);
+
+const getQueuedWindowIds = () =>
+  [...activeSweeps.entries()].filter(([, run]) => !run.started && !run.stop).map(([id]) => id);
+
+const startedCount = () => [...activeSweeps.values()].filter(run => run.started && !run.stop).length;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -45,6 +57,7 @@ export const getPreloadSweepStatus = () => ({
   isSweeping: getSweepingWindowIds().length > 0,
   remainingCount: totalRemaining(),
   sweepingWindowIds: getSweepingWindowIds(),
+  queuedWindowIds: getQueuedWindowIds(),
   remainingByWindow: Object.fromEntries(
     [...activeSweeps.entries()].map(([id, run]) => [id, run.remaining || 0])
   )
@@ -339,7 +352,7 @@ const swapToPlaceholderAndDiscard = async (
   });
 };
 
-const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
+const sweepWindow = async (windowId, run, { skipFocusWait = false, initialTabs = null } = {}) => {
   const originalActiveTab = (
     await browser.tabs.query({ windowId: windowId, active: true }).catch(() => [])
   )[0];
@@ -351,23 +364,48 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
   // 手動起動時はユーザが今すぐの実行を求めているので、フォーカス待ちをしない
   const focusState = { skipWait: skipFocusWait };
   let previousTabId = null;
+  const firstTabs =
+    initialTabs || (await browser.tabs.query({ windowId: windowId }).catch(() => []));
   // 万一idの追跡が破れても暴走しないよう、反復回数に上限を設ける
-  const initialTabCount = (await browser.tabs.query({ windowId: windowId }).catch(() => []))
-    .length;
-  const maxIterations = initialTabCount * 2 + 20;
+  const maxIterations = firstTabs.length * 2 + 20;
   let iterationCount = 0;
+  // 対象タブの選定は、反復ごとにウィンドウ全体をqueryせず、1パスにつき1回だけqueryして
+  // idのスナップショットを作り、以後はtabs.get(id)で個別に確認する。800タブ規模では
+  // query 1回がタブ数×URL長(incognito placeholderのdata:URLは1本で数十〜数百KB)の
+  // ダンプになり、それをタブごとに繰り返すとブラウザプロセスとSWの直列化負荷が
+  // タブ数の二乗で膨らんでChromeが落ちる(ユーザ報告: 800タブ)。
+  // 2パス目以降は1パス目の取りこぼし(Memory Saverのdiscardでidが変わった等)を拾う
+  const pickTargets = tabs =>
+    tabs
+      .filter(tab => !tab.active && !processedTabIds.has(tab.id) && isSweepTarget(tab))
+      .map(tab => tab.id);
+  let queue = pickTargets(firstTabs);
+  let pass = 1;
   while (!run.stop) {
     if (++iterationCount > maxIterations) {
       log.warn(logDir, "sweepWindow() iteration cap reached", windowId, maxIterations);
       addSweepDebugEvent("sweep-iteration-cap", { windowId, maxIterations });
       break;
     }
-    const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => null);
-    if (!tabs) break; //ウィンドウが閉じられた
-    const nextTab = tabs.find(
-      tab => !tab.active && !processedTabIds.has(tab.id) && isSweepTarget(tab)
-    );
-    if (!nextTab) break;
+    if (queue.length === 0) {
+      if (pass >= MAX_TARGET_PASSES) break;
+      const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => null);
+      if (!tabs) break; //ウィンドウが閉じられた
+      queue = pickTargets(tabs);
+      if (queue.length === 0) break;
+      pass++;
+      addSweepDebugEvent("sweep-pass", { windowId, pass, targets: queue.length });
+    }
+    const nextTab = await browser.tabs.get(queue.shift()).catch(() => null);
+    // 消えた・アクティブになった・処理済みになった・対象でなくなったタブは飛ばす
+    // (ウィンドウ自体が閉じられた場合は、キューが尽きた後のqueryで検出して終了する)
+    if (
+      !nextTab ||
+      nextTab.active ||
+      processedTabIds.has(nextTab.id) ||
+      !isSweepTarget(nextTab)
+    )
+      continue;
     processedTabIds.add(nextTab.id);
 
     // 既にサムネイルがある対象は読み込み直さない(既定)。フォーカス待ちも描画待ちも
@@ -516,20 +554,42 @@ export const startPreloadSweep = async (windowIds, { manual = false } = {}) => {
     const tabs = await browser.tabs.query({ windowId: windowId }).catch(() => []);
     const run = {
       stop: false,
+      started: false,
       remaining: tabs.filter(tab => !tab.active && isSweepTarget(tab)).length
     };
     activeSweeps.set(windowId, run);
-    runs.push({ windowId, run });
+    // 初回のタブ一覧はsweepWindow()にも渡して、同じダンプを二度取らない
+    runs.push({ windowId, run, tabs });
   }
   updateBadge();
 
   // ウィンドウごとに並行実行する。キャプチャは共通キューで直列化されるので
-  // 割当超過にはならず、読み込み待ちが重なる分だけ全体が速くなる
-  await Promise.all(
-    runs.map(async ({ windowId, run }) => {
+  // 割当超過にはならず、読み込み待ちが重なる分だけ全体が速くなる。
+  // ただし同時に走らせる数には上限を設ける: スウィープ中のウィンドウは常時1〜2枚の
+  // 実ページを読み込んでいるため、数十ウィンドウを無制限に並行するとメモリが積み上がる
+  // (ユーザ報告: 800タブでChromeが落ちる)。超過分は順番待ちにする。上限は
+  // 延期再開(handleWindowFocusForDeferredSweep)など別の呼び出しとも合算で数える
+  const limit = Math.max(
+    1,
+    Number(getSettings("preloadSweepMaxParallelWindows")) || DEFAULT_MAX_PARALLEL_WINDOWS
+  );
+  const pending = [...runs];
+  const worker = async () => {
+    while (pending.length > 0) {
+      const { windowId, run, tabs } = pending.shift();
+      while (!run.stop && startedCount() >= limit) await sleep(QUEUE_POLL_MS);
+      // 順番待ちの間にStopされたウィンドウはタブに触らずに片付ける
+      if (run.stop) {
+        activeSweeps.delete(windowId);
+        addSweepDebugEvent("sweep-window-cancelled-queued", { windowId });
+        updateBadge();
+        continue;
+      }
+      run.started = true;
       addSweepDebugEvent("sweep-window-start", { windowId });
+      broadcastStatus();
       try {
-        await sweepWindow(windowId, run, { skipFocusWait: manual });
+        await sweepWindow(windowId, run, { skipFocusWait: manual, initialTabs: tabs });
       } catch (e) {
         log.error(logDir, "sweepWindow()", e);
         addSweepDebugEvent("sweep-window-error", { windowId, error: e?.message || String(e) });
@@ -538,8 +598,9 @@ export const startPreloadSweep = async (windowIds, { manual = false } = {}) => {
         addSweepDebugEvent("sweep-window-finished", { windowId });
         updateBadge();
       }
-    })
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, pending.length) }, worker));
   log.info(logDir, "=>startPreloadSweep() finished", windowIds);
   addSweepDebugEvent("sweep-finished", { windowIds: String(windowIds) });
 };

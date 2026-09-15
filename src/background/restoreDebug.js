@@ -42,6 +42,11 @@ const makeSnapshot = () => {
   };
 };
 
+// 退避と通知は最大でも1秒に1回にまとめる。以前の75msでは、8,000件のリングバッファ
+// (約1MBのJSON)をスウィープ中ずっと毎秒10回以上まるごと直列化・書き込み・送信して
+// いた — 800タブのスウィープは1時間規模なので、この負荷が延々と続く(ユーザ報告:
+// Chromeが落ちる)。デバッグパネルはどのみち1秒ポーリングで拾うので体感は変わらない
+const BROADCAST_INTERVAL_MS = 1000;
 const broadcast = () => {
   if (pendingBroadcast) return;
   pendingBroadcast = setTimeout(() => {
@@ -50,7 +55,7 @@ const broadcast = () => {
     browser.runtime
       .sendMessage({ message: "restoreDebugUpdated", restoreDebug: makeSnapshot() })
       .catch(() => {});
-  }, 75);
+  }, BROADCAST_INTERVAL_MS);
 };
 
 // どのイベントにもURLを載せない方針の防波堤。詳細値にURLらしき文字列が

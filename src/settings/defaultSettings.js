@@ -70,6 +70,15 @@ export default [
         default: 5
       },
       {
+        id: "preloadSweepMaxParallelWindows",
+        title: "preloadSweepMaxParallelWindowsLabel",
+        captions: ["preloadSweepMaxParallelWindowsCaptionLabel"],
+        type: "number",
+        min: 1,
+        placeholder: 2,
+        default: 2
+      },
+      {
         id: "isRestoreWindowPosition",
         title: "isRestoreWindowPositionLabel",
         captions: ["isRestoreWindowPositionCaptionLabel"],

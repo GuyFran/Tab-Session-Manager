@@ -73,12 +73,20 @@ lift it — verified 2026-08-27. Any automated run must load the extension throu
 `npm run build` (produces `dist/*.zip`) has not been run since the toolchain was restored and
 isn't needed for this fork's local-unpacked workflow.
 
-## Current status (2026-09-11)
+## Current status (2026-09-16)
 
-- Version **7.4.56** in both manifests. The last recorded clean dev build
-  in the log is 7.4.48 (0 errors, 27 known Sass-loader deprecation warnings — 26 baseline plus the
-  debug stylesheet); 7.4.49–7.4.56 landed since and their build/runtime status is not re-verified in
-  this docs pass — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- Version **7.4.57** in both manifests. Last clean dev build: **7.4.57** (0 errors, 29 warnings,
+  all Sass-loader deprecations; the count was 27 at 7.4.48 and the two extra appeared somewhere in
+  7.4.49–7.4.56, which were never individually re-verified). Runtime status of 7.4.49–7.4.57 is
+  not verified in a real browser — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.57 — sweep scales linearly with tab count (user: 800-tab sweep crashed Chrome).** The
+  sweep used to re-query the whole window before every tab (quadratic, and each incognito
+  placeholder tab carries a data:URL of tens to hundreds of KB); it now snapshots target ids once
+  per pass and uses `tabs.get`. "Sweep all" is capped at 2 concurrent windows (new setting
+  `preloadSweepMaxParallelWindows`; extra windows show "queued" in the popup). Debug trace
+  persist/broadcast throttled 75 ms → 1 s; popup window list dumps all tabs only every 15 s.
+  **Untested at 800 tabs** (backlog SCALE-01). Side finding PH-01: Chrome's session file blanks
+  any navigation URL over ~63 KB, which big placeholder URLs can exceed — unverified, P1.
 - **v7.4.56 — the `ifForceRefreshThumbnailsOnSweep` toggle is surfaced in the popup's "Open windows" panel ("Re-capture thumbnails on sweep"), next to the sweep controls; still mirrored on the options page. Writes via setSettings; the background sweep reads it live through the storage.onChanged listener.**
 - **v7.4.55 — the sweep skips tabs that already have a cached thumbnail by default (no reload): normal placeholders stay as placeholders, incognito discarded tabs swap straight to a data:URL placeholder using the cached thumbnail. New setting `ifForceRefreshThumbnailsOnSweep` (off by default) forces every tab to reload and re-capture. See `hasThumbnail()` in thumbnails.js and `shouldSkipForCachedThumbnail()` in preloadSweep.js.**
 - **v7.4.54 — incognito tabs restore straight to hibernated data:URL placeholders with their cached thumbnails; no post-restore re-sweep is needed.**

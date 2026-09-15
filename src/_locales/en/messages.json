@@ -335,6 +335,12 @@
   "ifForceRefreshThumbnailsOnSweepCaptionLabel": {
     "message": "By default, preloading skips any tab that already has a saved thumbnail, so cached pages are not reloaded. Enable this to reload every tab and capture a fresh thumbnail, even when one already exists."
   },
+  "preloadSweepMaxParallelWindowsLabel": {
+    "message": "Windows preloaded at the same time"
+  },
+  "preloadSweepMaxParallelWindowsCaptionLabel": {
+    "message": "\"Sweep all\" preloads several windows in parallel, and each window being swept keeps one or two real pages loading at once. This caps how many windows are swept concurrently; the others wait their turn. Lower values use less memory on very large sessions."
+  },
   "tabCreateBatchSizeLabel": {
     "message": "Tabs created per batch when restoring"
   },
