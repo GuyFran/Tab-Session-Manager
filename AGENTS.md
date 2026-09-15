@@ -75,10 +75,14 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-09-16)
 
-- Version **7.4.58** in both manifests. Last clean dev build: **7.4.58** (0 errors, 29 warnings,
+- Version **7.4.59** in both manifests. Last clean dev build: **7.4.59** (0 errors, 29 warnings,
   all Sass-loader deprecations; the count was 27 at 7.4.48 and the two extra appeared somewhere in
-  7.4.49–7.4.56, which were never individually re-verified). Runtime status of 7.4.49–7.4.58 is
+  7.4.49–7.4.56, which were never individually re-verified). Runtime status of 7.4.49–7.4.59 is
   not verified in a real browser — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.59 — OS notifications when a restore finishes/fails and when a sweep finishes/stops**
+  (`background/notify.js`, new `notifications` permission in both manifests, setting
+  `ifNotifyOnRestoreAndSweep` default on). Sweep totals are aggregated across overlapping
+  invocations and posted once when no sweep is active.
 - **v7.4.58 — PH-01 fixed: incognito placeholder URLs are kept under 60 KB** (Chrome's session
   file blanks any navigation URL over ~63 KB). Thumbnails are now encoded through a width/quality
   ladder to ≤ 36,000 bytes (`encodeToFit` in thumbnails.js); oversized legacy thumbnails are

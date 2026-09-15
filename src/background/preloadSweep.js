@@ -10,6 +10,7 @@ import {
 } from "./thumbnails";
 import { showBadge, hideBadge } from "./setBadge";
 import { addSweepDebugEvent } from "./restoreDebug";
+import { notifySweepFinished, notifySweepNothingToDo } from "./notify";
 import {
   buildIncognitoPlaceholder,
   isIncognitoPlaceholderUrl
@@ -439,6 +440,8 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false, initialTabs =
           allowCached: true
         });
       }
+      run.processed++;
+      run.cachedSkips++;
       if (run.remaining > 0) run.remaining--;
       updateBadge();
       continue;
@@ -473,6 +476,7 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false, initialTabs =
       const bgLoaded = await waitForLoad(nextTab.id, run);
       addSweepDebugEvent("sweep-tab-bg-processed", { tabId: nextTab.id, status: bgLoaded?.status || "gone", ...tabRef(bgLoaded || nextTab) });
       await discardProcessedTab(nextTab.id, processedTabIds);
+      run.processed++;
       if (run.remaining > 0) run.remaining--;
       updateBadge();
       continue;
@@ -511,19 +515,26 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false, initialTabs =
       // フォーカス直後の最初のタブはステータスの揺り戻しで1回目のキャプチャが
       // 落ちやすく、スウィープはこの後タブをplaceholderに差し替えてしまうため
       // 二度と撮れない。保存を確認できるまで数回粘る
+      let captured = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         await captureActiveTab(windowId, { fromSweep: true });
-        const stored = !!(loadedTab.url && (await getThumbnailDataUrl(loadedTab.url)));
+        // 有無だけ確認する(以前はgetThumbnailDataUrlでblob全体をbase64化していた)
+        const stored = !!(loadedTab.url && (await hasThumbnail(loadedTab.url)));
         addSweepDebugEvent("sweep-step", { step: "capture-retry", tabId: nextTab.id, attempt, stored });
-        if (stored) break;
+        if (stored) {
+          captured = true;
+          break;
+        }
         if (run.stop) break;
         await sleep(700);
       }
+      if (captured) run.captured++;
       addSweepDebugEvent("sweep-step", { step: "capture-done", tabId: nextTab.id });
     } else {
       addSweepDebugEvent("sweep-step", { step: "capture-skipped", tabId: nextTab.id, status: loadedTab?.status || "gone", discarded: loadedTab?.discarded, ...tabRef(loadedTab || nextTab) });
     }
     previousTabId = nextTab.id;
+    run.processed++;
     if (run.remaining > 0) run.remaining--;
     updateBadge();
   }
@@ -569,12 +580,18 @@ export const startPreloadSweep = async (windowIds, { manual = false } = {}) => {
     const run = {
       stop: false,
       started: false,
-      remaining: tabs.filter(tab => !tab.active && isSweepTarget(tab)).length
+      remaining: tabs.filter(tab => !tab.active && isSweepTarget(tab)).length,
+      // 完了通知用の集計
+      processed: 0,
+      captured: 0,
+      cachedSkips: 0
     };
     activeSweeps.set(windowId, run);
     // 初回のタブ一覧はsweepWindow()にも渡して、同じダンプを二度取らない
     runs.push({ windowId, run, tabs });
   }
+  // 完了通知の経過時間は、重なった呼び出しのうち最初のものの開始から数える
+  if (runs.length > 0 && !sweepTotals.startedAt) sweepTotals.startedAt = Date.now();
   updateBadge();
 
   // ウィンドウごとに並行実行する。キャプチャは共通キューで直列化されるので
@@ -617,6 +634,28 @@ export const startPreloadSweep = async (windowIds, { manual = false } = {}) => {
   await Promise.all(Array.from({ length: Math.min(limit, pending.length) }, worker));
   log.info(logDir, "=>startPreloadSweep() finished", windowIds);
   addSweepDebugEvent("sweep-finished", { windowIds: String(windowIds) });
+  reportSweepFinished(runs, windowIds.length);
+};
+
+// 完了通知(ユーザ要望)。"Sweep all"と延期再開など複数の呼び出しが重なることが
+// あるので、呼び出しごとに集計を積み上げ、走っているスウィープが無くなった時点で
+// 1通だけ出す
+const sweepTotals = { windows: 0, processed: 0, captured: 0, cachedSkips: 0, stopped: false, startedAt: 0 };
+const reportSweepFinished = (runs, checkedWindowCount) => {
+  if (runs.length === 0 && activeSweeps.size === 0 && sweepTotals.windows === 0) {
+    notifySweepNothingToDo({ windows: checkedWindowCount });
+    return;
+  }
+  for (const { run } of runs) {
+    sweepTotals.windows++;
+    sweepTotals.processed += run.processed;
+    sweepTotals.captured += run.captured;
+    sweepTotals.cachedSkips += run.cachedSkips;
+    if (run.stop) sweepTotals.stopped = true;
+  }
+  if (activeSweeps.size > 0) return;
+  notifySweepFinished({ ...sweepTotals, elapsedMs: Date.now() - sweepTotals.startedAt });
+  Object.assign(sweepTotals, { windows: 0, processed: 0, captured: 0, cachedSkips: 0, stopped: false, startedAt: 0 });
 };
 
 // windowId指定でそのウィンドウのスウィープだけ停止、未指定なら全停止

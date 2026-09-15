@@ -341,6 +341,12 @@
   "preloadSweepMaxParallelWindowsCaptionLabel": {
     "message": "\"Sweep all\" preloads several windows in parallel, and each window being swept keeps one or two real pages loading at once. This caps how many windows are swept concurrently; the others wait their turn. Lower values use less memory on very large sessions."
   },
+  "ifNotifyOnRestoreAndSweepLabel": {
+    "message": "Show a notification when a restore or a preload sweep finishes"
+  },
+  "ifNotifyOnRestoreAndSweepCaptionLabel": {
+    "message": "A system notification reports how many windows and tabs were restored, or how many tabs the sweep processed and how many thumbnails it captured. Failures are reported too."
+  },
   "tabCreateBatchSizeLabel": {
     "message": "Tabs created per batch when restoring"
   },

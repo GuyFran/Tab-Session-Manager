@@ -8,6 +8,7 @@ import { buildIncognitoPlaceholder } from "./incognitoPlaceholder.js";
 import { updateTabGroups, isEnabledTabGroups } from "../common/tabGroups";
 import { isTrackingSession, setLastFocusedWindowId, startTracking } from "./track.js";
 import { createRestoreDebug } from "./restoreDebug.js";
+import { notifyRestoreFinished, notifyRestoreFailed } from "./notify.js";
 import { getWindowsOrder } from "../common/editSessions.js";
 
 const logDir = "background/open";
@@ -15,6 +16,11 @@ const logDir = "background/open";
 
 export async function openSession(session, property = "openInNewWindow") {
   log.log(logDir, "openSession()", session, property);
+  const startedAt = Date.now();
+  const savedTabCount = Object.values(session.windows || {}).reduce(
+    (count, tabs) => count + Object.keys(tabs).length,
+    0
+  );
   const hasIncognitoWindow = Object.values(session.windows).some(tabs =>
     Object.values(tabs).some(tab => tab.incognito)
   );
@@ -152,8 +158,17 @@ export async function openSession(session, property = "openInNewWindow") {
     // v7.4.41: 復元後の自動スウィープは廃止。スウィープはpopupの手動操作のみ
     // (全ウィンドウ並行 or ウィンドウ単位)で起動する
     trace?.add("restore-finished", { restoredWindowIds: restoredWindowIds });
+    // 完了をOS通知で知らせる(ユーザ要望)。復元は数分かかることがあり、popupは
+    // とうに閉じているので、これが唯一の「終わった」合図になる
+    notifyRestoreFinished({
+      name: session.name,
+      windows: restoredWindowIds.length,
+      tabs: savedTabCount,
+      elapsedMs: Date.now() - startedAt
+    });
   } catch (e) {
     trace?.add("restore-error", { message: e?.message || String(e) });
+    notifyRestoreFailed({ name: session.name, error: e?.message || String(e) });
     throw e;
   } finally {
     trace?.finish();

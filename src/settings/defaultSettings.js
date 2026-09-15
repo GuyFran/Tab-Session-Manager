@@ -79,6 +79,13 @@ export default [
         default: 2
       },
       {
+        id: "ifNotifyOnRestoreAndSweep",
+        title: "ifNotifyOnRestoreAndSweepLabel",
+        captions: ["ifNotifyOnRestoreAndSweepCaptionLabel"],
+        type: "checkbox",
+        default: true
+      },
+      {
         id: "isRestoreWindowPosition",
         title: "isRestoreWindowPositionLabel",
         captions: ["isRestoreWindowPositionCaptionLabel"],
