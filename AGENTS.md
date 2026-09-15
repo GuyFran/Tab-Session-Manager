@@ -75,10 +75,11 @@ isn't needed for this fork's local-unpacked workflow.
 
 ## Current status (2026-09-11)
 
-- Version **7.4.54** in both manifests (latest commit `2607fe1`). The last recorded clean dev build
+- Version **7.4.55** in both manifests. The last recorded clean dev build
   in the log is 7.4.48 (0 errors, 27 known Sass-loader deprecation warnings — 26 baseline plus the
-  debug stylesheet); 7.4.49–7.4.54 landed since and their build/runtime status is not re-verified in
+  debug stylesheet); 7.4.49–7.4.55 landed since and their build/runtime status is not re-verified in
   this docs pass — see `docs/FORK-REVIEW.md` section 7 for per-version notes.
+- **v7.4.55 — the sweep skips tabs that already have a cached thumbnail by default (no reload): normal placeholders stay as placeholders, incognito discarded tabs swap straight to a data:URL placeholder using the cached thumbnail. New setting `ifForceRefreshThumbnailsOnSweep` (off by default) forces every tab to reload and re-capture. See `hasThumbnail()` in thumbnails.js and `shouldSkipForCachedThumbnail()` in preloadSweep.js.**
 - **v7.4.54 — incognito tabs restore straight to hibernated data:URL placeholders with their cached thumbnails; no post-restore re-sweep is needed.**
 - **v7.4.53 — reorder windows inside a saved session (per-window up/down buttons; the order is honored on restore).**
 - **v7.4.50–v7.4.52 — import pipeline: Session Buddy v3 (collections) import, a persistent "Import log" options panel (Copy logs / Clear), and "Read failed — <reason>" per-format diagnostics instead of silent/hung reads.**

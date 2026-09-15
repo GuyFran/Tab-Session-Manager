@@ -234,6 +234,26 @@ export const captureActiveTab = async (windowId, { fromSweep = false } = {}) => 
   }
 };
 
+// サムネイルの有無だけを軽量に確認する(blobのデコードもbase64化もしない)。
+// スウィープが対象タブごとに呼ぶため、getThumbnailDataUrl()の全読み込みは重い
+export const hasThumbnail = async url => {
+  if (!url) return false;
+  try {
+    const db = await openDB();
+    const count = await new Promise((resolve, reject) => {
+      const request = db
+        .transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME)
+        .count(url);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = e => reject(e);
+    });
+    return count > 0;
+  } catch (e) {
+    return false;
+  }
+};
+
 // 保存済みサムネイルをdata URIで返す(無ければ空文字)。incognitoのdata:URL
 // プレースホルダに埋め込むために使う
 export const getThumbnailDataUrl = async url => {

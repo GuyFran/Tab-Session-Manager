@@ -41,6 +41,13 @@ export default [
             captions: ["ifPreloadAfterRestoreCaptionLabel"],
             type: "checkbox",
             default: true
+          },
+          {
+            id: "ifForceRefreshThumbnailsOnSweep",
+            title: "ifForceRefreshThumbnailsOnSweepLabel",
+            captions: ["ifForceRefreshThumbnailsOnSweepCaptionLabel"],
+            type: "checkbox",
+            default: false
           }
         ]
       },

@@ -329,6 +329,12 @@
   "ifPreloadAfterRestoreCaptionLabel": {
     "message": "After restoring a session, load each tab one at a time per window to capture its thumbnail, then suspend it natively. Pauses while you are using the window. The toolbar badge shows the remaining count."
   },
+  "ifForceRefreshThumbnailsOnSweepLabel": {
+    "message": "Re-capture thumbnails during preload"
+  },
+  "ifForceRefreshThumbnailsOnSweepCaptionLabel": {
+    "message": "By default, preloading skips any tab that already has a saved thumbnail, so cached pages are not reloaded. Enable this to reload every tab and capture a fresh thumbnail, even when one already exists."
+  },
   "tabCreateBatchSizeLabel": {
     "message": "Tabs created per batch when restoring"
   },

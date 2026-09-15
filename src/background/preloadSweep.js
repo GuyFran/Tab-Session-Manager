@@ -2,7 +2,12 @@ import browser from "webextension-polyfill";
 import log from "loglevel";
 import { getSettings } from "src/settings/settings";
 import { returnReplaceParameter } from "./replace";
-import { captureActiveTab, getThumbnailDataUrl, captureVisibleTabWithTimeout } from "./thumbnails";
+import {
+  captureActiveTab,
+  getThumbnailDataUrl,
+  captureVisibleTabWithTimeout,
+  hasThumbnail
+} from "./thumbnails";
 import { showBadge, hideBadge } from "./setBadge";
 import { addSweepDebugEvent } from "./restoreDebug";
 import {
@@ -163,6 +168,23 @@ const isSweepTarget = tab =>
   isRedirectPlaceholder(tab) ||
   (tab.incognito && tab.discarded && !isIncognitoPlaceholderUrl(tab.url));
 
+// スウィープ対象の実URL。redirect placeholderはパラメータから、incognitoの
+// discard済みタブはtab.url(復元時点で実URLを保持)から得る
+const sweepTargetUrl = tab => {
+  if (isRedirectPlaceholder(tab)) {
+    const parameter = returnReplaceParameter(tab.url);
+    return parameter.isReplaced ? parameter.url : null;
+  }
+  return /^https?:/.test(tab.url || "") ? tab.url : null;
+};
+
+// スウィープの主目的はサムネイル生成。既にサムネイルがある対象を読み込み直すのは
+// 無駄なので、既定ではスキップする(ifForceRefreshThumbnailsOnSweepで強制更新可)
+const shouldSkipForCachedThumbnail = async tab => {
+  if (getSettings("ifForceRefreshThumbnailsOnSweep")) return false;
+  return await hasThumbnail(sweepTargetUrl(tab));
+};
+
 // ユーザが操作中のウィンドウには干渉しないよう、フォーカスが外れるのを少しだけ待つ
 // 復元直後のウィンドウはフォーカスされたままなので、無期限に待つとスウィープが永久に
 // 始まらない。captureVisibleTab()はウィンドウが表示されている必要もあるため、
@@ -222,13 +244,19 @@ const discardProcessedTab = async (tabId, processedTabIds) => {
 // 再読込されてサムネイルの出番が無い(ユーザ報告)。キャプチャ済みサムネイルを
 // 埋め込んだdata:URLプレースホルダに差し替えてからdiscardする。
 // tabs.update()はdata:URLを黙って無視するため「新規作成→旧タブ削除」で差し替える
-const swapToPlaceholderAndDiscard = async (tabId, processedTabIds, completedTabIds) => {
+const swapToPlaceholderAndDiscard = async (
+  tabId,
+  processedTabIds,
+  completedTabIds,
+  { allowCached = false } = {}
+) => {
   const tab = await browser.tabs.get(tabId).catch(() => null);
   if (!tab) return;
   // 読み込みが完了しなかったタブ(隠れたウィンドウでの空振り等)をplaceholderに
   // してしまうと、サムネイル無しのまま以後のスウィープ対象から外れて固定される。
-  // 完了タブだけ差し替え、未完了タブは素のdiscardに留めて再スウィープに委ねる
-  const completed = completedTabIds?.has(tabId);
+  // 完了タブだけ差し替え、未完了タブは素のdiscardに留めて再スウィープに委ねる。
+  // allowCached: キャッシュ済みサムネイルで差し替える場合は読み込み不要なので完了扱い
+  const completed = completedTabIds?.has(tabId) || allowCached;
   if (!completed || !tab.incognito || isIncognitoPlaceholderUrl(tab.url) || !/^https?:/.test(tab.url || "")) {
     await discardProcessedTab(tabId, processedTabIds);
     return;
@@ -341,6 +369,28 @@ const sweepWindow = async (windowId, run, { skipFocusWait = false } = {}) => {
     );
     if (!nextTab) break;
     processedTabIds.add(nextTab.id);
+
+    // 既にサムネイルがある対象は読み込み直さない(既定)。フォーカス待ちも描画待ちも
+    // キャプチャも不要なので、対象選択直後に片付ける
+    if (await shouldSkipForCachedThumbnail(nextTab)) {
+      addSweepDebugEvent("sweep-skip-cached-thumb", {
+        tabId: nextTab.id,
+        incognito: !!nextTab.incognito,
+        ...tabRef(nextTab)
+      });
+      // incognitoのdiscard済み実URLタブは、アクティブ化で実ページが即再読込され
+      // サムネイルの出番が無い。キャッシュ済みサムネイルでplaceholderに差し替えて
+      // からdiscardする(読み込みは行わない)。通常のredirect placeholderは
+      // placeholderページがキャッシュ済みサムネイルを表示するのでそのまま残す
+      if (nextTab.incognito && nextTab.discarded) {
+        await swapToPlaceholderAndDiscard(nextTab.id, processedTabIds, completedTabIds, {
+          allowCached: true
+        });
+      }
+      if (run.remaining > 0) run.remaining--;
+      updateBadge();
+      continue;
+    }
 
     await waitWhileWindowFocused(windowId, focusState, run);
     if (run.stop) break;
