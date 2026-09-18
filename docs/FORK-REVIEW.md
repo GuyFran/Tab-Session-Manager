@@ -2,11 +2,14 @@
 
 **Fork:** `GuyFran/Tab-Session-Manager` (origin) — upstream `sienori/Tab-Session-Manager`
 **Reviewed at:** commit `113b272` ("Update BACKERS.md"), extension version **7.4.0**
-**Last reassessed:** 2026-09-11; current version **7.4.54** (both manifests, latest commit `2607fe1`).
+**Last reassessed:** 2026-09-18; current version **7.4.59** (both manifests, latest commit `d45df75`).
 The private/mixed incognito restore (F-05/F-06/F-07) was **verified in real Chrome 152** — see QA-01 in
-section 5. Versions 7.4.49–7.4.54 are recorded in the section 7 log; the newest three (7.4.49, 7.4.53,
-7.4.54) were logged from the commit history during the 2026-09-11 docs pass and are not independently
-re-verified here.
+section 5. Versions 7.4.49–7.4.59 are recorded in the section 7 log; 7.4.49/7.4.53/7.4.54 were logged
+from the commit history during the 2026-09-11 docs pass, and 7.4.55–7.4.59 (cached-thumbnail sweep skip
++ force-refresh toggle, linear-scaling sweep with `preloadSweepMaxParallelWindows`, PH-01 placeholder
+URL-size cap, restore/sweep OS notifications) were added since — none of 7.4.55–7.4.59 is independently
+re-verified in a browser here; see their section 7 entries for build-only status and SCALE-01 in
+section 5 for the outstanding 800-tab check.
 **Review date:** 2026-08-07
 **Working tree at review time:** clean, no fork-specific commits yet (993 commits, all upstream)
 
